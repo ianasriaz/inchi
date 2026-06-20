@@ -1,498 +1,308 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Linking, ScrollView } from 'react-native';
 import { supabase } from '../lib/supabase';
-import type { RootStackParamList } from '../../App';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Invoice'>;
+export default function InvoiceScreen({ route, navigation }: any) {
+  const { customerId, customerName, customerPhone, garmentType, measurements, style, notes } = route.params;
 
-const COLORS = {
-  background: '#FFFFFF',
-  text: '#161d26',
-  accent: '#00e482',
-};
+  const [total, setTotal] = useState('');
+  const [advance, setAdvance] = useState('');
+  const [pickupDate, setPickupDate] = useState(''); // New State for Pickup Date
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerated, setIsGenerated] = useState(false);
 
-const URDU_FONT = 'JameelNooriNastaleeqKasheeda';
+  const totalNum = parseInt(total || '0', 10);
+  const advanceNum = parseInt(advance || '0', 10);
+  const balance = totalNum - advanceNum;
 
-const toNumericValue = (value: string) => {
-  const parsed = Number.parseInt(value.trim(), 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-export default function InvoiceScreen({ navigation, route }: Props) {
-  const insets = useSafeAreaInsets();
-  const { customerId, garmentType, measurements, styles } = route.params ?? {
-    customerId: 0,
-    garmentType: 'Kameez Shalwar',
-    measurements: {},
-    styles: {},
-  };
-
-  const [totalAmount, setTotalAmount] = useState('');
-  const [advanceAmount, setAdvanceAmount] = useState('');
-  const [pickupDate, setPickupDate] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [customerName, setCustomerName] = useState('Loading...');
-  const [customerPhone, setCustomerPhone] = useState('');
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadCustomer = async () => {
-      if (!customerId) {
-        if (isActive) {
-          setCustomerName('Unknown Customer');
-        }
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('customers')
-        .select('name, phone')
-        .eq('id', customerId)
-        .maybeSingle();
-
-      if (!isActive) {
-        return;
-      }
-
-      if (error) {
-        console.error('Failed to load customer summary:', error);
-        setCustomerName('Unknown Customer');
-        return;
-      }
-
-      setCustomerName(data?.name ?? 'Unknown Customer');
-      setCustomerPhone(data?.phone ?? '');
-    };
-
-    loadCustomer();
-
-    return () => {
-      isActive = false;
-    };
-  }, [customerId]);
-
-  const totalValue = useMemo(() => toNumericValue(totalAmount), [totalAmount]);
-  const advanceValue = useMemo(() => toNumericValue(advanceAmount), [advanceAmount]);
-  const balanceDue = Math.max(totalValue - advanceValue, 0);
+  // Auto-generate today's date
+  const bookingDate = new Date().toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
 
   const handleGenerateOrder = async () => {
-    if (!customerId) {
-      Alert.alert('Missing Customer', 'Customer reference is missing. Please go back and select a customer.');
+    if (!total) {
+      Alert.alert('Error', 'Please enter the total amount.');
       return;
     }
+    if (!pickupDate) {
+      Alert.alert('Notice', 'Please enter a pickup date or day.');
+      return;
+    }
+    setIsLoading(true);
 
-    setIsSaving(true);
-
-    try {
-      const { error } = await supabase.from('orders').insert({
+    const { error } = await supabase
+      .from('orders')
+      .insert({
         customer_id: customerId,
-        garment_type: garmentType,
-        measurements,
-        style_options: {
-          ...styles,
-          pickup_date: pickupDate || null,
-        },
-        total_amount: totalValue,
-        advance_amount: advanceValue,
+        garment_type: garmentType || 'Kameez Shalwar',
+        measurements: measurements,
+        // Bundle the dates into JSONB so we don't break the database schema
+        style_options: { ...style, notes, bookingDate, pickupDate },
+        total_amount: totalNum,
+        advance_amount: advanceNum,
+        status: 'pending'
       });
 
-      if (error) {
-        throw error;
-      }
+    setIsLoading(false);
 
-      navigation.popToTop();
-    } catch (error) {
-      console.error('Failed to generate order:', error);
-      Alert.alert('Save Failed', error instanceof Error ? error.message : 'Unable to save the order.');
-    } finally {
-      setIsSaving(false);
+    if (error) {
+      Alert.alert('Database Error', 'Could not save the order.');
+    } else {
+      setIsGenerated(true);
     }
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-      <View style={styles.screen}>
-        <ScrollView
-          contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.headerCard}>
-            <Text style={styles.kicker}>Inchi Tailor Desk</Text>
-            <Text style={styles.title}>Invoice / بل</Text>
-            <Text style={styles.subtitle}>Add billing details, pickup date, and save the final invoice.</Text>
+  // ==========================================
+  // HTML TEMPLATES
+  // ==========================================
+  const measurementRows = Object.entries(measurements)
+    .map(([key, val]) => `<tr><td style="text-transform: capitalize;">${key}</td><td><b>${val}</b></td></tr>`)
+    .join('');
+
+  // 1. Customer Invoice
+  const customerHtml = `
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #161D26; padding: 40px; }
+          .header { text-align: center; border-bottom: 3px solid #00E482; padding-bottom: 20px; margin-bottom: 30px; }
+          .brand { font-size: 40px; font-weight: bold; color: #161D26; margin: 0; letter-spacing: 2px; }
+          .sub-brand { font-size: 16px; color: #666; }
+          .info-row { display: flex; justify-content: space-between; margin-bottom: 20px; }
+          .box { background: #F9F9F9; padding: 15px; border-radius: 8px; border: 1px solid #E8E8E8; width: 45%; }
+          .box h4 { margin: 0 0 5px 0; font-size: 12px; color: #999; text-transform: uppercase; }
+          .box p { margin: 0; font-size: 16px; font-weight: bold; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background: #161D26; color: #FFFFFF; text-align: left; padding: 12px; }
+          td { border-bottom: 1px solid #E8E8E8; padding: 12px; }
+          .finance-section { margin-top: 40px; border-top: 2px solid #E8E8E8; padding-top: 20px; }
+          .finance-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 18px; }
+          .balance-row { font-size: 24px; font-weight: bold; color: #00E482; background: #161D26; padding: 15px; border-radius: 8px; margin-top: 10px;}
+          .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #999; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1 class="brand">INCHI</h1>
+          <div class="sub-brand">Customer Receipt</div>
+        </div>
+        <div class="info-row">
+          <div class="box">
+            <h4>Customer</h4>
+            <p>${customerName}</p>
+            <p style="font-size: 14px; color: #666; font-weight: normal;">${customerPhone}</p>
+          </div>
+          <div class="box">
+            <h4>Order Details</h4>
+            <p>${garmentType || 'Kameez Shalwar'}</p>
+            <p style="font-size: 14px; color: #666; font-weight: normal; margin-top: 5px;">Booked: ${bookingDate}</p>
+            <p style="font-size: 16px; color: #161D26; font-weight: bold; margin-top: 5px;">Pickup: ${pickupDate}</p>
+          </div>
+        </div>
+        <div class="finance-section">
+          <div class="finance-row"><span>Total Amount:</span> <span>Rs. ${totalNum}</span></div>
+          <div class="finance-row"><span>Advance Paid:</span> <span>Rs. ${advanceNum}</span></div>
+          <div class="finance-row balance-row">
+            <span style="color: #FFFFFF;">Balance Due:</span> 
+            <span>Rs. ${balance}</span>
+          </div>
+        </div>
+        <div class="footer">Thank you for choosing us! Please bring this receipt when collecting your order.</div>
+      </body>
+    </html>
+  `;
+
+  // 2. Stitcher/Master Copy
+  const stitcherHtml = `
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #000; padding: 20px; }
+          .header { text-align: center; border-bottom: 4px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+          .title { font-size: 32px; font-weight: bold; margin: 0; text-transform: uppercase; }
+          .grid { display: flex; flex-wrap: wrap; justify-content: space-between; }
+          .measure-box { width: 45%; border: 2px solid #000; margin-bottom: 15px; padding: 15px; text-align: center; border-radius: 8px; }
+          .measure-box span { display: block; font-size: 18px; color: #555; text-transform: capitalize; margin-bottom: 5px; }
+          .measure-box strong { font-size: 36px; }
+          .styles-box { border: 2px solid #000; padding: 20px; margin-top: 20px; border-radius: 8px; }
+          .styles-box h3 { margin-top: 0; font-size: 24px; text-decoration: underline; }
+          .styles-box p { font-size: 22px; font-weight: bold; margin: 10px 0; }
+          .dates { font-size: 18px; text-align: center; margin-top: 5px; color: #333; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1 class="title">MASTER COPY</h1>
+          <h2>${customerName} - ${garmentType || 'Kameez Shalwar'}</h2>
+          <div class="dates">Booked: ${bookingDate} | <strong style="color:#000;">Pickup: ${pickupDate}</strong></div>
+        </div>
+        <div class="grid">
+          ${Object.entries(measurements).map(([key, val]) => `
+            <div class="measure-box"><span>${key}</span><strong>${val}</strong></div>
+          `).join('')}
+        </div>
+        <div class="styles-box">
+          <h3>Styles & Instructions</h3>
+          <p>Collar: ${style.collar}</p>
+          <p>Pockets: ${style.pockets.join(', ')}</p>
+          ${notes ? `<p>NOTES: ${notes}</p>` : ''}
+        </div>
+      </body>
+    </html>
+  `;
+
+  // ==========================================
+  // ACTION HANDLERS
+  // ==========================================
+  const shareCustomerPDF = async () => {
+    try {
+      const { uri } = await Print.printToFileAsync({ html: customerHtml });
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    } catch (error) {
+      Alert.alert('Error', 'Could not generate PDF.');
+    }
+  };
+
+  const printStitcherCopy = async () => {
+    try {
+      await Print.printAsync({ html: stitcherHtml });
+    } catch (error) {
+      Alert.alert('Error', 'Could not open print preview.');
+    }
+  };
+
+  const sendDirectWhatsAppText = () => {
+    if (!customerPhone) return Alert.alert('Error', 'No phone number provided for this customer.');
+    
+    let formattedPhone = customerPhone.replace(/\D/g, '');
+    if (formattedPhone.startsWith('0')) formattedPhone = '92' + formattedPhone.slice(1);
+
+    const message = `Assalam-o-Alaikum ${customerName},\n\nYour order for ${garmentType || 'Kameez Shalwar'} has been booked.\nPickup Date: *${pickupDate}*\n\nTotal: Rs. ${totalNum}\nAdvance: Rs. ${advanceNum}\n*Balance Due: Rs. ${balance}*\n\nThank you, INCHI Tailors.`;
+    const url = `whatsapp://send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
+    
+    Linking.openURL(url).catch(() => Alert.alert('Error', 'WhatsApp is not installed on this device.'));
+  };
+
+  // ==========================================
+  // VIEW 1: SUCCESS & ACTIONS VIEW
+  // ==========================================
+  if (isGenerated) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', padding: 20 }]}>
+        <View style={{ alignItems: 'center', marginBottom: 40 }}>
+          <View style={styles.successCircle}>
+            <Text style={{ fontSize: 40 }}>✓</Text>
           </View>
-
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Customer</Text>
-              <Text style={styles.summaryValue}>{customerName}</Text>
-            </View>
-
-            {customerPhone ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Phone</Text>
-                <Text style={styles.summaryValue}>{customerPhone}</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Garment Type</Text>
-              <Text style={styles.summaryValue}>{garmentType}</Text>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Styles</Text>
-              <Text style={styles.summaryValue}>
-                {Object.entries(styles)
-                  .map(([key, value]) => `${key}: ${value}`)
-                  .join(' • ')}
-              </Text>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Measurements</Text>
-              <Text style={styles.summaryValue}>{Object.keys(measurements).length} fields captured</Text>
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Billing</Text>
-
-            <View style={styles.billingGrid}>
-              <View style={styles.billingCard}>
-                <View style={styles.billingCardHeader}>
-                  <Text style={styles.billingCardTitle}>Total Bill</Text>
-                  <Text style={styles.billingCardUrdu}>کل بل</Text>
-                </View>
-                <TextInput
-                  value={totalAmount}
-                  onChangeText={setTotalAmount}
-                  placeholder="Enter total bill"
-                  placeholderTextColor="rgba(22, 29, 38, 0.35)"
-                  keyboardType="numeric"
-                  style={styles.cardInput}
-                />
-                <Text style={styles.billingHint}>This is the final customer bill amount.</Text>
-              </View>
-
-              <View style={styles.billingCard}>
-                <View style={styles.billingCardHeader}>
-                  <Text style={styles.billingCardTitle}>Advance Paid</Text>
-                  <Text style={styles.billingCardUrdu}>ایڈوانس</Text>
-                </View>
-                <TextInput
-                  value={advanceAmount}
-                  onChangeText={setAdvanceAmount}
-                  placeholder="Enter advance"
-                  placeholderTextColor="rgba(22, 29, 38, 0.35)"
-                  keyboardType="numeric"
-                  style={styles.cardInput}
-                />
-                <Text style={styles.billingHint}>Advance payment received now.</Text>
-              </View>
-            </View>
-
-            <View style={styles.billingCardWide}>
-              <View style={styles.billingCardHeader}>
-                <Text style={styles.billingCardTitle}>Pickup Date</Text>
-                <Text style={styles.billingCardUrdu}>تاریخِ وصولی</Text>
-              </View>
-              <TextInput
-                value={pickupDate}
-                onChangeText={setPickupDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="rgba(22, 29, 38, 0.35)"
-                style={styles.cardInput}
-              />
-              <Text style={styles.billingHint}>Use a clear date so the pickup reminder is easy to read.</Text>
-            </View>
-          </View>
-
-          <View style={styles.invoiceCard}>
-            <Text style={styles.invoiceHeading}>Beautiful Invoice Preview</Text>
-
-            <View style={styles.invoiceRow}>
-              <Text style={styles.invoiceLabel}>Customer</Text>
-              <Text style={styles.invoiceValue}>{customerName}</Text>
-            </View>
-
-            <View style={styles.invoiceRow}>
-              <Text style={styles.invoiceLabel}>Garment</Text>
-              <Text style={styles.invoiceValue}>{garmentType}</Text>
-            </View>
-
-            <View style={styles.invoiceDivider} />
-
-            <View style={styles.invoiceRow}>
-              <Text style={styles.invoiceLabel}>Total Bill</Text>
-              <Text style={styles.invoiceValue}>Rs. {totalValue}</Text>
-            </View>
-
-            <View style={styles.invoiceRow}>
-              <Text style={styles.invoiceLabel}>Advance Paid</Text>
-              <Text style={styles.invoiceValue}>Rs. {advanceValue}</Text>
-            </View>
-
-            <View style={styles.invoiceRowHighlight}>
-              <Text style={styles.invoiceBalanceLabel}>Balance Due</Text>
-              <Text style={styles.invoiceBalanceValue}>Rs. {balanceDue}</Text>
-            </View>
-
-            <View style={styles.invoiceRow}>
-              <Text style={styles.invoiceLabel}>Pickup Date</Text>
-              <Text style={styles.invoiceValue}>{pickupDate || 'Not selected'}</Text>
-            </View>
-          </View>
-        </ScrollView>
-
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={isSaving}
-            style={({ pressed }) => [styles.saveButton, pressed && !isSaving && styles.saveButtonPressed]}
-            onPress={handleGenerateOrder}
-          >
-            <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Generate Order / آرڈر مکمل کریں'}</Text>
-          </Pressable>
+          <Text style={styles.successTitle}>Order Created!</Text>
         </View>
+
+        <Text style={styles.sectionLabel}>Customer Actions</Text>
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#161D26' }]} onPress={shareCustomerPDF}>
+            <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>📄 Share PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#25D366' }]} onPress={sendDirectWhatsAppText}>
+            <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>💬 Quick WA</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.sectionLabel}>Workshop Actions</Text>
+        <TouchableOpacity style={styles.printButton} onPress={printStitcherCopy}>
+          <Text style={styles.printButtonText}>🖨️ Preview & Print Stitcher Copy</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.homeButton} onPress={() => navigation.popToTop()}>
+          <Text style={styles.homeButtonText}>Back to Dashboard</Text>
+        </TouchableOpacity>
       </View>
+    );
+  }
+
+  // ==========================================
+  // VIEW 2: ORIGINAL FINANCE ENTRY VIEW
+  // ==========================================
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <View style={styles.formContainer}>
+          <Text style={styles.headerTitle}>Finance & Dates / بل اور تاریخ</Text>
+
+          <Text style={styles.label}>Pickup Date / واپسی کی تاریخ</Text>
+          <TextInput
+            style={styles.input}
+            value={pickupDate}
+            onChangeText={setPickupDate}
+            placeholder="e.g., 25 Oct or Next Friday"
+            placeholderTextColor="#aaa"
+          />
+
+          <Text style={styles.label}>Total Amount / کل رقم</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            value={total}
+            onChangeText={setTotal}
+            placeholder="Rs. 0"
+            placeholderTextColor="#aaa"
+          />
+
+          <Text style={styles.label}>Advance Paid / ایڈوانس</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            value={advance}
+            onChangeText={setAdvance}
+            placeholder="Rs. 0"
+            placeholderTextColor="#aaa"
+          />
+
+          <View style={styles.balanceCard}>
+            <Text style={styles.balanceLabel}>Balance Due / بقایا</Text>
+            <Text style={styles.balanceAmount}>Rs. {balance > 0 ? balance : 0}</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.saveButton} 
+          onPress={handleGenerateOrder} 
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#161d26" />
+          ) : (
+            <Text style={styles.saveButtonText}>Confirm & Save Order</Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  container: {
-    paddingHorizontal: 20,
-    flexGrow: 1,
-    gap: 18,
-  },
-  headerCard: {
-    borderRadius: 24,
-    padding: 18,
-    backgroundColor: '#F7F8FA',
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-  },
-  kicker: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  title: {
-    color: COLORS.text,
-    fontSize: 30,
-    fontWeight: '800',
-    lineHeight: 36,
-    marginBottom: 8,
-  },
-  subtitle: {
-    color: 'rgba(22, 29, 38, 0.72)',
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '600',
-  },
-  summaryCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    gap: 10,
-  },
-  summaryRow: {
-    gap: 4,
-  },
-  summaryLabel: {
-    color: 'rgba(22, 29, 38, 0.72)',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  summaryValue: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  section: {
-    gap: 12,
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  billingGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  billingCard: {
-    flex: 1,
-    minWidth: '48%',
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-    padding: 16,
-    gap: 8,
-    shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  billingCardWide: {
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-    padding: 16,
-    gap: 8,
-    shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  billingCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    gap: 10,
-  },
-  billingCardTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  billingCardUrdu: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: URDU_FONT,
-  },
-  cardInput: {
-    minHeight: 56,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: COLORS.text,
-    paddingHorizontal: 16,
-    color: COLORS.text,
-    fontSize: 22,
-    fontWeight: '900',
-    backgroundColor: '#FFFFFF',
-  },
-  billingHint: {
-    color: 'rgba(22, 29, 38, 0.68)',
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  invoiceCard: {
-    borderRadius: 24,
-    backgroundColor: '#F7F8FA',
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-    padding: 18,
-    gap: 12,
-  },
-  invoiceHeading: {
-    color: COLORS.text,
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  invoiceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
-  invoiceRowHighlight: {
-    borderRadius: 18,
-    backgroundColor: '#F3FFF9',
-    borderWidth: 1,
-    borderColor: COLORS.accent,
-    padding: 14,
-    gap: 4,
-  },
-  invoiceLabel: {
-    color: 'rgba(22, 29, 38, 0.72)',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  invoiceValue: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
-    flexShrink: 1,
-    textAlign: 'right',
-  },
-  invoiceDivider: {
-    height: 1,
-    backgroundColor: 'rgba(22, 29, 38, 0.12)',
-    marginVertical: 4,
-  },
-  invoiceBalanceLabel: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  invoiceBalanceValue: {
-    color: COLORS.text,
-    fontSize: 28,
-    fontWeight: '900',
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  label: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  input: {
-    minHeight: 64,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: COLORS.text,
-    paddingHorizontal: 18,
-    color: COLORS.text,
-    fontSize: 20,
-    fontWeight: '700',
-    backgroundColor: '#FFFFFF',
-  },
-  footer: {
-    paddingHorizontal: 20,
-  },
-  saveButton: {
-    width: '100%',
-    borderRadius: 22,
-    backgroundColor: COLORS.accent,
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButtonPressed: {
-    opacity: 0.88,
-  },
-  saveButtonText: {
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: '900',
-  },
+  container: { flexGrow: 1, backgroundColor: '#FFFFFF', padding: 20 },
+  formContainer: { flex: 1, marginTop: 10 },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#161D26', marginBottom: 20, fontFamily: 'Jameel Noori Nastaleeq Kasheeda' },
+  label: { color: '#161D26', fontSize: 16, marginBottom: 8, fontWeight: '600', fontFamily: 'Jameel Noori Nastaleeq Kasheeda' },
+  input: { borderWidth: 1, borderColor: '#E8E8E8', borderRadius: 8, padding: 15, fontSize: 18, color: '#161D26', marginBottom: 20, backgroundColor: '#F9F9F9' },
+  balanceCard: { backgroundColor: '#161D26', padding: 20, borderRadius: 12, marginTop: 10, marginBottom: 20, alignItems: 'center' },
+  balanceLabel: { color: '#FFFFFF', fontSize: 18, fontFamily: 'Jameel Noori Nastaleeq Kasheeda' },
+  balanceAmount: { color: '#00E482', fontSize: 36, fontWeight: 'bold', marginTop: 5 },
+  saveButton: { backgroundColor: '#00E482', padding: 20, borderRadius: 12, alignItems: 'center', marginBottom: 20 },
+  saveButtonText: { color: '#161D26', fontSize: 20, fontWeight: 'bold', fontFamily: 'Jameel Noori Nastaleeq Kasheeda' },
+  
+  // Success View Styles
+  successCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#00E482', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  successTitle: { fontSize: 28, fontWeight: 'bold', color: '#161D26' },
+  sectionLabel: { fontSize: 14, fontWeight: 'bold', color: '#999', textTransform: 'uppercase', marginBottom: 10, marginTop: 10 },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  actionButton: { width: '48%', padding: 18, borderRadius: 12, alignItems: 'center' },
+  actionButtonText: { fontSize: 16, fontWeight: 'bold' },
+  printButton: { backgroundColor: '#F9F9F9', borderWidth: 2, borderColor: '#161D26', width: '100%', padding: 18, borderRadius: 12, alignItems: 'center', marginBottom: 40 },
+  printButtonText: { color: '#161D26', fontSize: 16, fontWeight: 'bold' },
+  homeButton: { backgroundColor: '#FFFFFF', width: '100%', padding: 18, borderRadius: 12, alignItems: 'center' },
+  homeButtonText: { color: '#666', fontSize: 16, fontWeight: '600' }
 });
