@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform, KeyboardAvoidingView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+import { containsUrdu } from '../utils/textUtils';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomerSearch'>;
@@ -14,54 +16,71 @@ const COLORS = {
   accent: '#00e482',
 };
 
-const URDU_FONT = 'JameelNooriNastaleeqKasheeda';
+type CustomerData = {
+  id: number;
+  customer_number: number;
+  name: string | null;
+  phone: string | null;
+};
 
 export default function CustomerSearchScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<'regular' | 'new'>('regular');
-  const [customerNumber, setCustomerNumber] = useState('');
-  const [newCustomerNumber, setNewCustomerNumber] = useState(1);
-  const [recentCustomers, setRecentCustomers] = useState<
-    Array<{ id: number; customer_number: number; name: string | null; phone: string | null }>
-  >([]);
+  
+  // View State: 'initial' | 'search' | 'create'
+  const [viewState, setViewState] = useState<'initial' | 'search' | 'create'>('initial');
+  
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [customers, setCustomers] = useState<CustomerData[]>([]);
+  const [isCustomersLoading, setIsCustomersLoading] = useState(false);
+  
+  // Create State
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isCustomersLoading, setIsCustomersLoading] = useState(false);
+  const [newCustomerNumber, setNewCustomerNumber] = useState<number>(1);
 
-  const parsedCustomerNumber = Number.parseInt(customerNumber.trim(), 10);
-
-  const fetchRecentCustomers = useCallback(async () => {
+  const searchCustomers = useCallback(async (query: string) => {
     setIsCustomersLoading(true);
-
     try {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let q = supabase
         .from('customers')
         .select('id, customer_number, name, phone')
-        .order('customer_number', { ascending: false })
-        .limit(12);
+        .eq('shop_id', user.id)
+        .order('created_at', { ascending: false });
 
-      if (error) {
-        throw error;
+      if (query.trim()) {
+        const isNumeric = /^\d+$/.test(query.trim());
+        if (isNumeric) {
+          q = q.or(`phone.ilike.%${query.trim()}%,customer_number.eq.${Number(query.trim())}`);
+        } else {
+          q = q.ilike('name', `%${query.trim()}%`);
+        }
+      } else {
+        q = q.limit(20); // only show recent 20 if no query
       }
 
-      setRecentCustomers((data ?? []) as Array<{
-        id: number;
-        customer_number: number;
-        name: string | null;
-        phone: string | null;
-      }>);
+      const { data, error } = await q;
+      if (error) throw error;
+      setCustomers((data ?? []) as CustomerData[]);
     } catch (error) {
-      console.error('Failed to fetch customers:', error);
+      console.error('Search failed:', error);
     } finally {
       setIsCustomersLoading(false);
     }
   }, []);
 
   const fetchNewCustomerNumber = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { data, error } = await supabase
       .from('customers')
       .select('customer_number')
+      .eq('shop_id', user.id)
       .order('customer_number', { ascending: false })
       .limit(1);
 
@@ -69,65 +88,57 @@ export default function CustomerSearchScreen({ navigation }: Props) {
       console.error('Failed to fetch next customer number:', error);
       return;
     }
-
     const highestCustomerNumber = data?.[0]?.customer_number ?? 0;
-    setNewCustomerNumber((highestCustomerNumber ?? 0) + 1);
+    setNewCustomerNumber(highestCustomerNumber + 1);
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'regular') {
-      fetchRecentCustomers();
+    if (viewState === 'search') {
+      const timeout = setTimeout(() => {
+        searchCustomers(searchQuery);
+      }, 300);
+      return () => clearTimeout(timeout);
     }
-
-    if (activeTab === 'new') {
-      fetchNewCustomerNumber();
-    }
-  }, [activeTab, fetchNewCustomerNumber, fetchRecentCustomers]);
+  }, [searchQuery, viewState, searchCustomers]);
 
   useFocusEffect(
     useCallback(() => {
-      if (activeTab === 'regular') {
-        fetchRecentCustomers();
-      }
-
-      if (activeTab === 'new') {
+      if (viewState === 'search') {
+        if (!searchQuery) searchCustomers('');
+      } else if (viewState === 'create') {
         fetchNewCustomerNumber();
       }
-    }, [activeTab, fetchNewCustomerNumber, fetchRecentCustomers]),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [viewState, searchCustomers, fetchNewCustomerNumber])
   );
 
-  const handleQuickSelectCustomer = (customerId: number, customerNumberValue: number) => {
-    navigation.navigate('Measurement', { customerId, customerNumber: customerNumberValue });
-  };
-
-  const handleRegularSearch = async () => {
-    if (!customerNumber.trim() || Number.isNaN(parsedCustomerNumber)) {
-      Alert.alert('Enter Customer Number', 'Please enter a valid customer number to continue.');
-      return;
-    }
-
+  const fetchAndNavigate = async (customerId: number, customerNumberValue: number, customerName: string | null, customerPhone: string | null) => {
     setIsLoading(true);
-
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('customer_number', parsedCustomerNumber)
+      const { data } = await supabase
+        .from('orders')
+        .select('measurements, garment_type, style_options')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          Alert.alert('Customer not found', 'Customer not found');
-          return;
-        }
-
-        throw error;
-      }
-
-      navigation.navigate('Measurement', { customerId: data.id, customerNumber: parsedCustomerNumber });
-    } catch (error) {
-      console.error('Customer search failed:', error);
-      Alert.alert('Search Failed', error instanceof Error ? error.message : 'Unable to search for the customer.');
+        
+      navigation.navigate('Measurement', { 
+        customerId, 
+        customerNumber: customerNumberValue,
+        customerName: customerName || 'Unknown Customer',
+        customerPhone: customerPhone || '',
+        initialMeasurements: data?.measurements || {},
+        initialGarmentType: data?.garment_type || 'Kameez Shalwar',
+        initialStyle: data?.style_options || null
+      });
+    } catch (e) {
+      navigation.navigate('Measurement', { 
+        customerId, 
+        customerNumber: customerNumberValue,
+        customerName: customerName || 'Unknown Customer',
+        customerPhone: customerPhone || ''
+      });
     } finally {
       setIsLoading(false);
     }
@@ -135,332 +146,333 @@ export default function CustomerSearchScreen({ navigation }: Props) {
 
   const handleCreateCustomer = async () => {
     if (!name.trim()) {
-      Alert.alert('Customer Name Required', 'Please enter the customer name to continue.');
+      Alert.alert('Required', 'Please enter the customer name.');
       return;
     }
 
     setIsLoading(true);
-
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Authentication required.');
+
       const { data, error } = await supabase
         .from('customers')
         .insert({
-          customer_number: newCustomerNumber,
+          shop_id: user.id,
           name: name.trim(),
           phone: phone.trim() || null,
         })
-        .select('id')
+        .select('id, name, phone, customer_number')
         .single();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      navigation.navigate('Measurement', { customerId: data.id, customerNumber: newCustomerNumber });
+      navigation.navigate('Measurement', { 
+        customerId: data.id, 
+        customerNumber: data.customer_number,
+        customerName: data.name || 'Unknown Customer',
+        customerPhone: data.phone || ''
+      });
     } catch (error) {
       console.error('Customer create failed:', error);
-      Alert.alert('Create Failed', error instanceof Error ? error.message : 'Unable to create customer.');
+      Alert.alert('Error', 'Unable to create customer.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const isRegularTab = activeTab === 'regular';
-
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-      <ScrollView
-        contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'top', 'bottom']}>
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.toggleBar}>
-          <Pressable
-            accessibilityRole="button"
-            style={[styles.toggleButton, isRegularTab && styles.toggleButtonActive]}
-            onPress={() => setActiveTab('regular')}
-          >
-            <Text style={styles.toggleButtonText}>Regular Customer</Text>
-          </Pressable>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: 20 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          
+          <View style={styles.headerContainer}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Pressable onPress={() => {
+                if (viewState === 'initial') navigation.goBack();
+                else setViewState('initial');
+              }}>
+                <Ionicons name="close" size={28} color={COLORS.text} />
+              </Pressable>
+              <Text style={styles.headerTitle}>
+                {viewState === 'initial' ? 'New Booking' : viewState === 'search' ? 'Select Customer' : 'New Customer'}
+              </Text>
+            </View>
+          </View>
 
-          <Pressable
-            accessibilityRole="button"
-            style={[styles.toggleButton, !isRegularTab && styles.toggleButtonActive]}
-            onPress={() => setActiveTab('new')}
-          >
-            <Text style={styles.toggleButtonText}>New Customer</Text>
-          </Pressable>
-        </View>
+          {viewState === 'initial' ? (
+            <View style={styles.initialStateContainer}>
+              <Text style={styles.promptText}>Who is this booking for?</Text>
+              
+              <View style={styles.binaryCardsContainer}>
+                <TouchableOpacity 
+                  style={[styles.bigChoiceCard, { borderColor: COLORS.accent, backgroundColor: '#E8FDF3' }]} 
+                  onPress={() => setViewState('create')}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.iconCircle, { backgroundColor: '#00e482' }]}>
+                    <Ionicons name="person-add" size={40} color="#161D26" />
+                  </View>
+                  <Text style={styles.bigChoiceTitle}>New Customer</Text>
+                  <Text style={styles.bigChoiceUrdu}>نیا گاہک</Text>
+                </TouchableOpacity>
 
-        <View style={styles.content}>
-          {isRegularTab ? (
-            <View style={styles.regularBlock}>
-              <View style={styles.quickPickHeader}>
-                <Text style={styles.quickPickTitle}>Quick Select Customers</Text>
-                <Text style={styles.quickPickSubtitle}>Tap a customer below or search by number.</Text>
+                <TouchableOpacity 
+                  style={[styles.bigChoiceCard, { borderColor: 'transparent', backgroundColor: '#F7F8FA' }]} 
+                  onPress={() => setViewState('search')}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.iconCircle, { backgroundColor: '#E0E0E0' }]}>
+                    <Ionicons name="search" size={40} color="#161D26" />
+                  </View>
+                  <Text style={styles.bigChoiceTitle}>Existing Customer</Text>
+                  <Text style={styles.bigChoiceUrdu}>پرانا گاہک</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : viewState === 'search' ? (
+            <View style={styles.viewContent}>
+              <View style={styles.searchBar}>
+                <Ionicons name="search" size={20} color="rgba(22, 29, 38, 0.5)" />
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[
+                      styles.searchInput,
+                      containsUrdu(searchQuery) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 18, includeFontPadding: false }
+                    ]}
+                    placeholder="Search name, phone, or #..."
+                    placeholderTextColor="rgba(22, 29, 38, 0.4)"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoCorrect={false}
+                  />
+                </View>
+                {searchQuery.length > 0 ? (
+                  <Pressable onPress={() => setSearchQuery('')}>
+                    <Ionicons name="close-circle" size={20} color="rgba(22, 29, 38, 0.3)" />
+                  </Pressable>
+                ) : null}
               </View>
 
-              <View style={styles.quickPickBlock}>
-                {isCustomersLoading ? (
-                  <View style={styles.loadingRow}>
-                    <ActivityIndicator color={COLORS.text} />
-                    <Text style={styles.loadingText}>Loading customers...</Text>
-                  </View>
-                ) : null}
+              <Text style={styles.sectionTitle}>
+                {searchQuery.trim() ? 'Search Results' : 'Recent Customers'}
+              </Text>
 
-                {!isCustomersLoading && recentCustomers.length === 0 ? (
-                  <Text style={styles.emptyListText}>No saved customers yet.</Text>
-                ) : null}
-
-                <View style={styles.quickPickList}>
-                  {recentCustomers.map((customer) => (
-                    <Pressable
-                      key={customer.id}
-                      style={styles.quickPickCard}
-                      onPress={() => handleQuickSelectCustomer(customer.id, customer.customer_number)}
+              {isCustomersLoading ? (
+                <ActivityIndicator color={COLORS.accent} style={{ marginTop: 20 }} />
+              ) : customers.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="people-outline" size={48} color="rgba(22, 29, 38, 0.1)" />
+                  <Text style={styles.emptyStateText}>No customers found.</Text>
+                </View>
+              ) : (
+                <View style={styles.customerList}>
+                  {customers.map((item) => (
+                    <Pressable 
+                      key={item.id} 
+                      style={styles.customerCard}
+                      onPress={() => fetchAndNavigate(item.id, item.customer_number, item.name, item.phone)}
                     >
-                      <View style={styles.quickPickCardTop}>
-                        <Text style={styles.quickPickName}>{customer.name ?? 'Unnamed Customer'}</Text>
-                        <View style={styles.quickPickBadge}>
-                          <Text style={styles.quickPickBadgeText}>#{customer.customer_number}</Text>
-                        </View>
+                      <View style={styles.avatar}>
+                        <Ionicons name="person" size={24} color="#161D26" />
                       </View>
-                      <Text style={styles.quickPickMeta}>{customer.phone ?? 'No phone'}</Text>
+                      <View style={styles.customerInfo}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text 
+                            style={[
+                              styles.customerName, 
+                              containsUrdu(item.name || '') && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 20, lineHeight: 45, paddingVertical: 10, overflow: 'visible' }
+                            ]}
+                          >
+                            <Text style={{ color: COLORS.accent }}>#{item.customer_number} </Text>
+                            {item.name || 'Unnamed'}
+                          </Text>
+                        </View>
+                        <Text style={styles.customerPhone}>{item.phone || 'No phone'}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="rgba(22, 29, 38, 0.2)" />
                     </Pressable>
                   ))}
                 </View>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Customer Number</Text>
-                <TextInput
-                  value={customerNumber}
-                  onChangeText={setCustomerNumber}
-                  placeholder="Customer Number"
-                  placeholderTextColor="rgba(22, 29, 38, 0.35)"
-                  keyboardType="number-pad"
-                  style={styles.input}
-                />
-              </View>
+              )}
             </View>
           ) : (
-            <View style={styles.newCustomerBlock}>
-              <Text style={styles.autoIdText}>
-                New Customer ID: <Text style={styles.autoIdValue}>{newCustomerNumber}</Text>
-              </Text>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>
-                  Name / <Text style={styles.urduInline}>نام</Text>
-                </Text>
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Name"
-                  placeholderTextColor="rgba(22, 29, 38, 0.35)"
-                  style={styles.input}
-                />
+            <View style={styles.viewContent}>
+              <View style={styles.autoIdBanner}>
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#E8FDF3', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="pricetag" size={24} color={COLORS.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: 'rgba(22, 29, 38, 0.6)', marginBottom: 2 }}>
+                    Customer Number
+                  </Text>
+                  <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.text, letterSpacing: 1 }}>
+                    #{newCustomerNumber}
+                  </Text>
+                </View>
               </View>
 
-              <View style={styles.fieldGroup}>
+              <View style={styles.formGroup}>
                 <Text style={styles.label}>
-                  Phone / <Text style={styles.urduInline}>فون</Text>
+                  Name - <Text style={{ fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 16 }}>نام</Text>
                 </Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Phone"
-                  placeholderTextColor="rgba(22, 29, 38, 0.35)"
-                  keyboardType="phone-pad"
-                  style={styles.input}
-                />
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[
+                      styles.inputField,
+                      containsUrdu(name) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 20, includeFontPadding: false }
+                    ]}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="e.g. Ali Khan"
+                    placeholderTextColor="rgba(22, 29, 38, 0.3)"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>
+                  Phone Number - <Text style={{ fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 16 }}>فون نمبر</Text>
+                </Text>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.inputField}
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder="e.g. 0300 1234567"
+                    placeholderTextColor="rgba(22, 29, 38, 0.3)"
+                    keyboardType="phone-pad"
+                  />
+                </View>
               </View>
             </View>
           )}
-        </View>
+          
+          <View style={{ height: 100 }} />
+        </ScrollView>
 
-        <Pressable
-          accessibilityRole="button"
-          disabled={isLoading}
-          style={({ pressed }) => [styles.primaryButton, pressed && !isLoading && styles.primaryButtonPressed]}
-          onPress={isRegularTab ? handleRegularSearch : handleCreateCustomer}
-        >
-          {isLoading ? (
-            <ActivityIndicator color={COLORS.text} />
-          ) : (
-            <Text style={styles.primaryButtonText}>{isRegularTab ? 'Search & Continue' : 'Create & Continue'}</Text>
-          )}
-        </Pressable>
-      </ScrollView>
+        {viewState === 'create' && (
+          <View style={[styles.footer, { paddingBottom: insets.bottom || 20 }]}>
+            <Pressable 
+              style={[styles.primaryButton, isLoading ? { opacity: 0.7 } : null]} 
+              onPress={handleCreateCustomer}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color={COLORS.text} />
+              ) : (
+                <>
+                  <Text style={[styles.primaryButtonText, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 20, includeFontPadding: false, textAlignVertical: 'center', marginTop: Platform.OS === 'ios' ? 6 : 0 }]}>پیمائش لیں</Text>
+                  <Ionicons name="arrow-forward" size={20} color={COLORS.text} style={{ marginLeft: 8 }} />
+                </>
+              )}
+            </Pressable>
+          </View>
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  container: {
-    backgroundColor: COLORS.background,
-    paddingHorizontal: 20,
-    flexGrow: 1,
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 20 },
+  
+  headerContainer: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 24,
-  },
-  toggleBar: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  toggleButton: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.text,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 14,
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 24,
   },
-  toggleButtonActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
-  },
-  toggleButtonText: {
+  headerTitle: {
     color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  content: {
-    gap: 18,
-  },
-  regularBlock: {
-    gap: 18,
-  },
-  quickPickHeader: {
-    gap: 4,
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  label: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  input: {
-    minHeight: 64,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: COLORS.text,
-    paddingHorizontal: 18,
-    color: COLORS.text,
-    fontSize: 20,
-    fontWeight: '700',
-    backgroundColor: '#FFFFFF',
-  },
-  newCustomerBlock: {
-    gap: 16,
-  },
-  quickPickBlock: {
-    gap: 12,
-  },
-  quickPickTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  quickPickSubtitle: {
-    color: 'rgba(22, 29, 38, 0.72)',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    color: 'rgba(22, 29, 38, 0.75)',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptyListText: {
-    color: 'rgba(22, 29, 38, 0.72)',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  quickPickList: {
-    gap: 10,
-  },
-  quickPickCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    gap: 6,
-  },
-  quickPickCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  quickPickName: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  quickPickBadge: {
-    borderRadius: 999,
-    backgroundColor: '#F3FFF9',
-    borderWidth: 1,
-    borderColor: COLORS.accent,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  quickPickBadgeText: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  quickPickMeta: {
-    color: 'rgba(22, 29, 38, 0.72)',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  autoIdText: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  autoIdValue: {
-    color: COLORS.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
+    letterSpacing: -0.5,
   },
-  urduInline: {
-    fontFamily: URDU_FONT,
-    fontSize: 16,
-    fontWeight: '400',
-    lineHeight: 22,
+
+  // Initial State Styles
+  initialStateContainer: { flex: 1, paddingTop: 12 },
+  promptText: { fontSize: 18, fontWeight: '700', color: 'rgba(22, 29, 38, 0.6)', marginBottom: 24, textAlign: 'center' },
+  binaryCardsContainer: { gap: 16 },
+  bigChoiceCard: { 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingVertical: 40, 
+    borderRadius: 32, 
+    borderWidth: 2,
   },
-  primaryButton: {
-    width: '100%',
-    borderRadius: 18,
-    backgroundColor: COLORS.accent,
-    paddingVertical: 18,
+  iconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  bigChoiceTitle: { fontSize: 24, fontWeight: '900', color: '#161D26', marginBottom: 4 },
+  bigChoiceUrdu: { fontFamily: 'NotoNastaliqUrdu', fontSize: 20, color: 'rgba(22, 29, 38, 0.6)', lineHeight: 36, paddingTop: 4 },
+
+  viewContent: { flex: 1, gap: 20 },
+
+  // Search Bar
+  searchBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#F7F8FA',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 56,
   },
-  primaryButtonPressed: {
-    opacity: 0.88,
-  },
-  primaryButtonText: {
-    color: COLORS.text,
+  searchInput: {
+    flex: 1,
+    height: '100%',
+    marginLeft: 10,
     fontSize: 16,
-    fontWeight: '800',
+    color: COLORS.text,
+    fontWeight: '600',
+    paddingVertical: 0,
   },
+
+  sectionTitle: {
+    color: 'rgba(22, 29, 38, 0.5)',
+    fontSize: 14,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 4,
+  },
+
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 12 },
+  emptyStateText: { color: 'rgba(22, 29, 38, 0.4)', fontSize: 15, fontWeight: '600' },
+
+  // Customer List
+  customerList: { gap: 12 },
+  customerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12 },
+      android: { elevation: 2 },
+    }),
+  },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.accent, borderColor: '#161D26', borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  customerInfo: { flex: 1, gap: 2 },
+  customerName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  customerPhone: { color: 'rgba(22, 29, 38, 0.5)', fontSize: 13, fontWeight: '600' },
+
+  // Create Form
+  autoIdBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F8FA', padding: 16, borderRadius: 20, gap: 16, borderWidth: 2, borderColor: '#F0F0F0' },
+  formGroup: { gap: 8 },
+  label: { fontSize: 15, fontWeight: '800', color: COLORS.text, marginLeft: 4 },
+  inputContainer: { backgroundColor: '#F7F8FA', borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
+  inputField: { flex: 1, fontSize: 16, color: COLORS.text, fontWeight: '600', paddingVertical: 0 },
+
+  // Footer Actions
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 16, backgroundColor: 'transparent' },
+  primaryButton: {
+    flexDirection: 'row', width: '100%', borderRadius: 24, backgroundColor: COLORS.accent, height: 60, alignItems: 'center', justifyContent: 'center',
+    ...Platform.select({ ios: { shadowColor: '#00e482', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 }, android: { elevation: 6 } }),
+  },
+  primaryButtonText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
 });

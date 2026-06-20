@@ -1,24 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, RefreshControl, ScrollView, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import type { RootStackParamList } from '../../App';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { RootStackParamList, MainTabParamList } from '../../App';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
-
-type OrderRow = {
-  id: string;
-  garment_type: string;
-  balance_amount: number | null;
-  status: string | null;
-  created_at: string;
-  customers: {
-    name: string | null;
-    phone: string | null;
-  } | null;
-};
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<MainTabParamList, 'Dashboard'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 const COLORS = {
   background: '#FFFFFF',
@@ -26,150 +20,110 @@ const COLORS = {
   accent: '#00e482',
 };
 
-const URDU_FONT = 'JameelNooriNastaleeqKasheeda';
+const URDU_FONT = 'NotoNastaliqUrdu';
 
 export default function DashboardScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [stats, setStats] = useState({
+    stitchingOrders: 0,
+    readyOrders: 0,
+    deliveredOrders: 0,
+  });
 
-  const fetchOrders = useCallback(async () => {
+  const fetchStats = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { data, error } = await supabase
       .from('orders')
-      .select('*, customers(name, phone)')
-      .order('created_at', { ascending: false });
+      .select('status, created_at')
+      .eq('shop_id', user.id);
 
     if (error) {
-      console.error('Failed to fetch orders:', error);
+      console.error('Failed to fetch stats:', error);
       return;
     }
 
-    setOrders((data as OrderRow[]) ?? []);
+    if (data) {
+      const stitchingOrders = data.filter(o => o.status === 'pending').length;
+      const readyOrders = data.filter(o => o.status === 'ready').length;
+      const deliveredOrders = data.filter(o => o.status === 'delivered').length;
+      setStats({ stitchingOrders, readyOrders, deliveredOrders });
+    }
   }, []);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchOrders();
-    }, [fetchOrders]),
+      fetchStats();
+    }, [fetchStats]),
   );
 
-  const formatPhoneForWhatsApp = (phone: string | null | undefined) => {
-    if (!phone) {
-      return '';
-    }
-
-    const digitsOnly = phone.replace(/\D/g, '');
-
-    if (digitsOnly.startsWith('0092')) {
-      return digitsOnly.slice(2);
-    }
-
-    if (digitsOnly.startsWith('92')) {
-      return digitsOnly;
-    }
-
-    if (digitsOnly.startsWith('0')) {
-      return `92${digitsOnly.slice(1)}`;
-    }
-
-    return `92${digitsOnly}`;
-  };
-
-  const handleWhatsAppPickup = async (order: OrderRow) => {
-    const formattedPhone = formatPhoneForWhatsApp(order.customers?.phone);
-
-    if (!formattedPhone) {
-      console.error('Missing customer phone for WhatsApp pickup');
-      return;
-    }
-
-    const message = `Assalam-o-Alaikum! Your ${order.garment_type} is ready to pickup. Balance due: Rs. ${order.balance_amount ?? 0}.`;
-    const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
-
-    try {
-      await Linking.openURL(url);
-    } catch (error) {
-      console.error('Failed to open WhatsApp:', error);
-    }
-  };
-
-  const renderOrderCard = ({ item }: { item: OrderRow }) => {
-    const customerName = item.customers?.name ?? 'Unknown Customer';
-    const customerPhone = item.customers?.phone ?? 'No phone';
-    const statusLabel = item.status ?? 'Pending';
-    const createdDate = new Date(item.created_at).toLocaleDateString();
-
-    return (
-      <View style={styles.orderCard}>
-        <View style={styles.orderRowTop}>
-          <View style={styles.orderTextBlock}>
-            <Text style={styles.orderCustomerName}>{customerName}</Text>
-            <Text style={styles.orderCustomerMeta}>{customerPhone}</Text>
-            <Text style={styles.orderMeta}>
-              {item.garment_type} • {createdDate}
-            </Text>
-          </View>
-
-          <View style={styles.statusPill}>
-            <Text style={styles.statusPillText}>{statusLabel}</Text>
-          </View>
-        </View>
-
-        <View style={styles.orderDetailsRow}>
-          <View style={styles.balanceBlock}>
-            <Text style={styles.balanceLabel}>Balance Due</Text>
-            <Text style={styles.balanceValue}>Rs. {item.balance_amount ?? 0}</Text>
-          </View>
-        </View>
-
-        <Pressable style={styles.whatsappButton} onPress={() => handleWhatsAppPickup(item)}>
-          <Text style={styles.whatsappButtonText}>WhatsApp Pickup</Text>
-        </Pressable>
-      </View>
-    );
-  };
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await fetchStats();
+    setIsRefreshing(false);
+  }, [fetchStats]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-      <View style={styles.screen}>
-        <FlatList
-          data={orders}
-          keyExtractor={(item) => item.id}
-          renderItem={renderOrderCard}
-          contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <View style={styles.content}>
-              <Text style={styles.header}>
-                Active Orders / <Text style={styles.urduText}>موجودہ آرڈرز</Text>
-              </Text>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'top']}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[styles.container, { paddingTop: 20, paddingBottom: 100 }]}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={[COLORS.accent]} tintColor={COLORS.accent} />}
+      >
+        <View style={styles.content}>
+          <View style={styles.headerContainer}>
+            <Text style={styles.headerTitle}>Dashboard</Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginLeft: 'auto' }}>
+              <Pressable onPress={() => navigation.navigate('Revenue')} style={styles.settingsButton}>
+                <Ionicons name="wallet-outline" size={24} color={COLORS.text} />
+              </Pressable>
+              <Pressable onPress={() => navigation.navigate('Settings')} style={styles.settingsButton}>
+                <Ionicons name="settings-outline" size={24} color={COLORS.text} />
+              </Pressable>
+            </View>
+          </View>
 
-              <View style={styles.emptyStateCard}>
-                <Text style={styles.emptyStateTitle}>Live order feed from Supabase</Text>
-                <Text style={styles.emptyStateSubtitle}>Pull to refresh by navigating away and back to this screen.</Text>
+          <View style={styles.statsGrid}>
+            <View style={[styles.statBox, styles.statBoxFull]}>
+              <View style={styles.statBoxTop}>
+                <View style={styles.iconCircle}>
+                  <Ionicons name="cut-outline" size={24} color={COLORS.accent} />
+                </View>
+                <Text style={styles.statValueBig}>{stats.stitchingOrders}</Text>
               </View>
+              <Text style={[styles.statLabel, { fontFamily: URDU_FONT, lineHeight: 28, paddingTop: 4 }]}>Stitching / سلائی</Text>
             </View>
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyOrdersBlock}>
-              <Text style={styles.emptyStateTitle}>No active orders yet</Text>
-              <Text style={styles.emptyStateSubtitle}>Start a new booking to add the first order.</Text>
-            </View>
-          }
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
 
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
-          <Pressable style={styles.newBookingButton} onPress={() => navigation.navigate('CustomerSearch')}>
-            <Text style={styles.newBookingButtonText}>
-              [ + NEW BOOKING / <Text style={styles.newBookingUrdu}>نیا آرڈر</Text> ]
-            </Text>
-          </Pressable>
+            <View style={styles.statBox}>
+              <View style={styles.statBoxTop}>
+                <Ionicons name="checkmark-circle-outline" size={24} color={COLORS.accent} />
+                <Text style={[styles.statValue, { color: COLORS.accent }]}>{stats.readyOrders}</Text>
+              </View>
+              <Text style={[styles.statLabel, { fontFamily: URDU_FONT, lineHeight: 28, paddingTop: 4 }]}>Ready / مکمل</Text>
+            </View>
+
+            <View style={styles.statBox}>
+              <View style={styles.statBoxTop}>
+                <Ionicons name="bag-check-outline" size={24} color="#161D26" />
+                <Text style={[styles.statValue, { color: '#161D26' }]}>{stats.deliveredOrders}</Text>
+              </View>
+              <Text style={[styles.statLabel, { fontFamily: URDU_FONT, lineHeight: 28, paddingTop: 4 }]}>Delivered / ڈلیورڈ</Text>
+            </View>
+          </View>
         </View>
+
+      </ScrollView>
+
+      {/* Floating Action Button for New Booking */}
+      <View style={[styles.footer, { paddingBottom: 20 }]}>
+        <Pressable style={styles.newBookingButton} onPress={() => navigation.navigate('CustomerSearch')}>
+          <Ionicons name="add-circle" size={24} color={COLORS.text} style={{ marginRight: 6 }} />
+          <Text style={[styles.newBookingButtonText, { fontSize: 18, fontWeight: '900' }]}>
+            New Booking
+          </Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -188,155 +142,115 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     paddingHorizontal: 20,
     flexGrow: 1,
-    gap: 12,
   },
   content: {
-    gap: 18,
+    gap: 24,
     marginBottom: 6,
   },
-  header: {
-    color: COLORS.text,
-    fontSize: 28,
-    fontWeight: '800',
-    lineHeight: 36,
-    flexShrink: 1,
-  },
-  emptyStateCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-    padding: 18,
-    backgroundColor: '#F7F8FA',
-  },
-  emptyOrdersBlock: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.12)',
-    padding: 18,
-    backgroundColor: '#F7F8FA',
-  },
-  emptyStateTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  emptyStateSubtitle: {
-    color: 'rgba(22, 29, 38, 0.72)',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  separator: {
-    height: 12,
-  },
-  orderCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: COLORS.text,
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
-    gap: 14,
-  },
-  orderRowTop: {
+  headerContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignItems: 'baseline',
     gap: 12,
   },
-  orderTextBlock: {
-    flex: 1,
-    gap: 2,
-  },
-  orderCustomerName: {
+  headerTitle: {
     color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '800',
-    lineHeight: 24,
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: -1,
   },
-  orderCustomerMeta: {
-    color: 'rgba(22, 29, 38, 0.75)',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  orderMeta: {
-    color: 'rgba(22, 29, 38, 0.75)',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  orderDetailsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    gap: 12,
-  },
-  balanceBlock: {
-    gap: 4,
-  },
-  balanceLabel: {
-    color: 'rgba(22, 29, 38, 0.7)',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  balanceValue: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  statusPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F3FFF9',
-    borderWidth: 1,
-    borderColor: COLORS.accent,
-  },
-  statusPillText: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  whatsappButton: {
-    alignSelf: 'flex-end',
-    borderRadius: 14,
-    backgroundColor: COLORS.accent,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    minWidth: 150,
+  settingsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F7F8FA',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  whatsappButtonText: {
+  headerSubtitle: {
+    fontFamily: URDU_FONT,
+    color: 'rgba(22, 29, 38, 0.5)',
+    fontSize: 22,
+    fontWeight: '400',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  statBox: {
+    width: '47.5%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.05, shadowRadius: 16 },
+      android: { elevation: 3 },
+    }),
+  },
+  statBoxFull: {
+    width: '100%',
+    backgroundColor: '#00e482',
+    ...Platform.select({
+      ios: { shadowColor: '#00e482', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16 },
+      android: { elevation: 6 },
+    }),
+  },
+  statBoxTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  iconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statLabel: {
+    color: 'rgba(22, 29, 38, 0.7)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statValue: {
     color: COLORS.text,
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 32,
+    fontWeight: '900',
+  },
+  statValueBig: {
+    color: COLORS.text,
+    fontSize: 48,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    backgroundColor: 'transparent', // Allow background to show
   },
   newBookingButton: {
+    flexDirection: 'row',
     width: '100%',
-    borderRadius: 18,
+    borderRadius: 24,
     backgroundColor: COLORS.accent,
     paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  footer: {
-    paddingHorizontal: 20,
+    ...Platform.select({
+      ios: { shadowColor: '#00e482', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },
+      android: { elevation: 8 },
+    }),
   },
   newBookingButtonText: {
     color: COLORS.text,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.3,
-  },
-  newBookingUrdu: {
-    fontFamily: URDU_FONT,
-    fontSize: 18,
-    fontWeight: '400',
-    lineHeight: 24,
-  },
-  urduText: {
-    fontFamily: URDU_FONT,
-    fontSize: 28,
-    fontWeight: '400',
-    lineHeight: 34,
   },
 });
