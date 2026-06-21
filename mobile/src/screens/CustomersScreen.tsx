@@ -1,12 +1,16 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { FlatList, StyleSheet, Text, View, RefreshControl, Linking, Pressable, Platform, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import AppText from '../components/AppText';
+import TailorNumPad from '../components/TailorNumPad';
+import BlinkingCursor from '../components/BlinkingCursor';
 import { colors } from '../theme/colors';
 
 
@@ -28,60 +32,51 @@ const URDU_FONT = 'NotoNastaliqUrdu';
 
 export default function CustomersScreen() {
   const navigation = useNavigation<any>();
-  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [showNumPad, setShowNumPad] = useState(false);
 
-  const fetchCustomers = useCallback(async (query: string = '') => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+  const { data: user } = useQuery({
+    queryKey: ['authUser'],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data.user;
+    },
+  });
 
-    let q = supabase
-      .from('customers')
-      .select('*')
-      .eq('shop_id', user.id)
-      .order('created_at', { ascending: false });
+  const { data: customers = [], isLoading: isInitialLoading, isRefetching: isRefreshing } = useQuery({
+    queryKey: ['customers', user?.id, searchQuery],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      let q = supabase
+        .from('customers')
+        .select('*')
+        .eq('shop_id', user!.id)
+        .order('created_at', { ascending: false });
 
-    if (query.trim()) {
-      const isNumeric = /^\d+$/.test(query.trim());
-      if (isNumeric) {
-        q = q.or(`phone.ilike.%${query.trim()}%,customer_number.eq.${Number(query.trim())}`);
-      } else {
-        q = q.ilike('name', `%${query.trim()}%`);
+      if (searchQuery.trim()) {
+        q = q.or(`phone.eq.${searchQuery.trim()},customer_number.eq.${Number(searchQuery.trim())}`);
       }
+
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data as CustomerRow[]) ?? [];
+    },
+  });
+
+  const handleKeyPress = (key: string) => {
+    if (key === '⌫') {
+      setSearchQuery(prev => prev.slice(0, -1));
+    } else if (key === 'NEXT') {
+      setShowNumPad(false);
+    } else if (/^[\d.½]$/.test(key)) {
+      setSearchQuery(prev => prev + key);
     }
-
-    const { data, error } = await q;
-
-    if (error) {
-      console.error('Failed to fetch customers:', error);
-      setIsInitialLoading(false);
-      return;
-    }
-
-    setCustomers(data || []);
-    setIsInitialLoading(false);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchCustomers(searchQuery);
-    }, [fetchCustomers]),
-  );
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      fetchCustomers(searchQuery);
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [searchQuery, fetchCustomers]);
+  };
 
   const onRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await fetchCustomers(searchQuery);
-    setIsRefreshing(false);
-  }, [fetchCustomers, searchQuery]);
+    await queryClient.invalidateQueries({ queryKey: ['customers'] });
+  }, [queryClient]);
 
   const handleWhatsApp = async (phone: string | null) => {
     if (!phone) {
@@ -111,14 +106,11 @@ export default function CustomersScreen() {
           </View>
           <View style={styles.textBlock}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text 
-                style={[
-                  styles.customerName, 
-                  containsUrdu(item.name) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, lineHeight: 45, paddingVertical: 10, overflow: 'visible' }
-                ]}
-              >
-                {item.name}
-              </Text>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <AppText style={[styles.customerName, { overflow: 'visible', paddingVertical: 4 }]}>
+                  {item.name}
+                </AppText>
+              </View>
               <Text style={styles.customerId}>#{item.customer_number}</Text>
             </View>
             <Text style={styles.customerMeta}>Customer Since: {createdDate}</Text>
@@ -130,9 +122,9 @@ export default function CustomersScreen() {
             <Ionicons name="call-outline" size={16} color={colors.textOpacity(0.5)} />
             <Text style={styles.customerPhone}>{item.phone || 'No phone'}</Text>
           </View>
-          <Pressable style={styles.whatsappButtonSmall} onPress={() => handleWhatsApp(item.phone)}>
-            <Ionicons name="logo-whatsapp" size={18} color="#00C870" />
-            <Text style={styles.whatsappButtonTextSmall}>Message</Text>
+          <Pressable style={styles.contactInfo} onPress={() => handleWhatsApp(item.phone)}>
+            <Ionicons name="logo-whatsapp" size={16} color={colors.textOpacity(0.5)} />
+            <Text style={styles.customerPhone}>WhatsApp</Text>
           </Pressable>
         </View>
       </TouchableOpacity>
@@ -174,21 +166,18 @@ export default function CustomersScreen() {
               <View style={styles.headerContainer}>
                 <Text style={styles.headerTitle}>Customers</Text>
               </View>
-              <View style={styles.searchBar}>
+              <View style={[styles.searchBar, showNumPad && { borderColor: colors.primary, borderWidth: 1 }]}>
                 <Ionicons name="search" size={20} color={colors.textOpacity(0.5)} />
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={[
-                      styles.searchInput,
-                      containsUrdu(searchQuery) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 18, includeFontPadding: false }
-                    ]}
-                    placeholder="Search name, phone, or #..."
-                    placeholderTextColor={colors.textOpacity(0.4)}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    autoCorrect={false}
-                  />
-                </View>
+                <Pressable 
+                  style={[styles.inputContainer, { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }]} 
+                  onPress={() => setShowNumPad(true)}
+                >
+                  <Text style={[styles.searchInput, !searchQuery && { color: colors.textOpacity(0.4) }]}>
+                    {searchQuery}
+                    {!searchQuery && !showNumPad && " Search phone or ID..."}
+                  </Text>
+                  {showNumPad && <BlinkingCursor />}
+                </Pressable>
                 {searchQuery.length > 0 ? (
                   <Pressable onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
                     <Ionicons name="close-circle" size={20} color={colors.textOpacity(0.3)} />
@@ -205,6 +194,13 @@ export default function CustomersScreen() {
           }
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
+        {showNumPad && (
+          <TailorNumPad 
+            onKeyPress={handleKeyPress}
+            onClose={() => setShowNumPad(false)}
+            hideBottomInset={true}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -231,12 +227,10 @@ const styles = StyleSheet.create({
   },
   inputContainer: { flex: 1, height: '100%', justifyContent: 'center' },
   searchInput: {
-    flex: 1,
     marginLeft: 10,
     fontSize: 16,
     color: COLORS.text,
     fontWeight: '600',
-    paddingVertical: 0,
   },
 
   emptyBlock: { borderRadius: 24, padding: 24, backgroundColor: colors.white, alignItems: 'center', marginTop: 24 },
@@ -256,12 +250,12 @@ const styles = StyleSheet.create({
   avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: COLORS.accent, borderColor: colors.text, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   textBlock: { flex: 1, gap: 2 },
   customerName: { color: COLORS.text, fontSize: 18, fontWeight: '800', lineHeight: 24 },
-  customerId: { color: COLORS.accent, fontSize: 14, fontWeight: '900' },
+  customerId: { color: COLORS.accent, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   customerMeta: { color: colors.textOpacity(0.5), fontSize: 13, marginTop: 2 },
   
   contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 12, padding: 10 },
   contactInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   customerPhone: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   whatsappButtonSmall: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primaryLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  whatsappButtonTextSmall: { color: '#00C870', fontSize: 13, fontWeight: '800' },
+  whatsappButtonTextSmall: { color: colors.text, fontSize: 13, fontWeight: '800' },
 });

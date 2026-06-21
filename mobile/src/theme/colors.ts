@@ -10,7 +10,15 @@ export const colors = {
   borderDark: '#E0E0E0',
   error: '#FF3B30', // Red for errors or destructive actions
   errorLight: '#FFE5E5',
+  warning: '#EFA61B', // Yellow/orange for To Collect
+  warningLight: '#FFF5DC',
+  warningBackground: '#FFFDF5',
   white: '#FFFFFF',
   black: '#000000',
-  transparent: 'transparent'
+  transparent: 'transparent',
+  // Dashboard specific
+  inProgressBackground: '#F2F9F4',
+  inProgressIconBackground: '#E4F4E8',
+  completedBackground: '#F7F7F7',
+  completedIconBackground: '#EFEFEF',
 };

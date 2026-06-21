@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
 import type { RootStackParamList } from '../../App';
 import { colors } from '../theme/colors';
+import AppText from '../components/AppText';
 
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomerProfile'>;
@@ -200,21 +201,8 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
           
           <View style={styles.profileCard}>
             <View style={{ flex: 1, paddingRight: 16 }}>
-              <Text style={{ color: colors.textOpacity(0.4), fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>
-                Customer Profile
-              </Text>
-              <Text 
-                style={[
-                  { color: colors.text, fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
-                  containsUrdu(name) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 20, lineHeight: 32, paddingTop: 4, textAlign: 'left' }
-                ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {name}
-              </Text>
-              <Text style={{ color: colors.textOpacity(0.6), fontSize: 15, fontWeight: '600', marginTop: containsUrdu(name) ? -4 : 4 }}>
-                {phone || 'No phone number'}
+              <Text style={{ color: colors.textOpacity(0.5), fontSize: 13, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                Customer Number
               </Text>
             </View>
             <View style={styles.idTag}>
@@ -338,9 +326,9 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '900', color: COLORS.text, letterSpacing: -0.5 },
   headerSubtitle: { fontFamily: 'NotoNastaliqUrdu', fontSize: 15, color: colors.textOpacity(0.5), marginTop: -4 },
 
-  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 24, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: '#E8ECEF', ...Platform.select({ ios: { shadowColor: colors.text, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 }, android: { elevation: 2 } }) },
-  idTag: { backgroundColor: colors.primaryLight, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.primary, minWidth: 64, alignItems: 'center', justifyContent: 'center' },
-  idTagText: { color: colors.text, fontSize: 20, fontWeight: '900' },
+  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 20, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: '#E8ECEF', ...Platform.select({ ios: { shadowColor: colors.text, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 }, android: { elevation: 2 } }) },
+  idTag: { backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, minWidth: 64, alignItems: 'center', justifyContent: 'center' },
+  idTagText: { color: colors.text, fontSize: 24, fontWeight: '900' },
 
   section: { marginBottom: 32 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginBottom: 16 },

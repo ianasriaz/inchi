@@ -8,6 +8,9 @@ import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
 import type { RootStackParamList } from '../../App';
 import { colors } from '../theme/colors';
+import AppText from '../components/AppText';
+import TailorNumPad from '../components/TailorNumPad';
+import BlinkingCursor from '../components/BlinkingCursor';
 
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomerSearch'>;
@@ -33,8 +36,19 @@ export default function CustomerSearchScreen({ navigation }: Props) {
   
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
+  const [showNumPad, setShowNumPad] = useState(false);
   const [customers, setCustomers] = useState<CustomerData[]>([]);
   const [isCustomersLoading, setIsCustomersLoading] = useState(false);
+
+  const handleSearchKeyPress = (key: string) => {
+    if (key === '⌫') {
+      setSearchQuery(prev => prev.slice(0, -1));
+    } else if (key === 'NEXT') {
+      setShowNumPad(false);
+    } else if (/^[\d.½]$/.test(key)) {
+      setSearchQuery(prev => prev + key);
+    }
+  };
   
   // Create State
   const [name, setName] = useState('');
@@ -55,12 +69,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
         .order('created_at', { ascending: false });
 
       if (query.trim()) {
-        const isNumeric = /^\d+$/.test(query.trim());
-        if (isNumeric) {
-          q = q.or(`phone.ilike.%${query.trim()}%,customer_number.eq.${Number(query.trim())}`);
-        } else {
-          q = q.ilike('name', `%${query.trim()}%`);
-        }
+        q = q.or(`phone.eq.${query.trim()},customer_number.eq.${Number(query.trim())}`);
       } else {
         q = q.limit(20); // only show recent 20 if no query
       }
@@ -237,21 +246,18 @@ export default function CustomerSearchScreen({ navigation }: Props) {
             </View>
           ) : viewState === 'search' ? (
             <View style={styles.viewContent}>
-              <View style={styles.searchBar}>
+              <View style={[styles.searchBar, showNumPad && { borderColor: colors.primary, borderWidth: 1 }]}>
                 <Ionicons name="search" size={20} color={colors.textOpacity(0.5)} />
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={[
-                      styles.searchInput,
-                      containsUrdu(searchQuery) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 18, includeFontPadding: false }
-                    ]}
-                    placeholder="Search name, phone, or #..."
-                    placeholderTextColor={colors.textOpacity(0.4)}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    autoCorrect={false}
-                  />
-                </View>
+                <Pressable 
+                  style={[styles.inputContainer, { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }]}
+                  onPress={() => setShowNumPad(true)}
+                >
+                  <Text style={[styles.searchInput, !searchQuery && { color: colors.textOpacity(0.4) }]}>
+                    {searchQuery}
+                    {!searchQuery && !showNumPad && " Search phone or ID..."}
+                  </Text>
+                  {showNumPad && <BlinkingCursor />}
+                </Pressable>
                 {searchQuery.length > 0 ? (
                   <Pressable onPress={() => setSearchQuery('')}>
                     <Ionicons name="close-circle" size={20} color={colors.textOpacity(0.3)} />
@@ -283,14 +289,13 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                       </View>
                       <View style={styles.customerInfo}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text 
-                            style={[
-                              styles.customerName, 
-                              containsUrdu(item.name || '') && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 20, lineHeight: 45, paddingVertical: 10, overflow: 'visible' }
-                            ]}
-                          >
-                            <Text style={{ color: COLORS.accent }}>#{item.customer_number} </Text>
-                            {item.name || 'Unnamed'}
+                          <View style={{ flex: 1, paddingRight: 8 }}>
+                            <AppText style={[styles.customerName, { overflow: 'visible', paddingVertical: 4 }]}>
+                              {item.name || 'Unnamed'}
+                            </AppText>
+                          </View>
+                          <Text style={{ fontSize: 22, fontWeight: '900', color: COLORS.accent, letterSpacing: -0.5 }}>
+                            #{item.customer_number}
                           </Text>
                         </View>
                         <Text style={styles.customerPhone}>{item.phone || 'No phone'}</Text>
@@ -311,7 +316,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                   <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textOpacity(0.6), marginBottom: 2 }}>
                     Customer Number
                   </Text>
-                  <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.text, letterSpacing: 1 }}>
+                  <Text style={{ fontSize: 28, fontWeight: '900', color: COLORS.accent, letterSpacing: -1 }}>
                     #{newCustomerNumber}
                   </Text>
                 </View>
@@ -321,7 +326,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                 <Text style={styles.label}>
                   Name - <Text style={{ fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 16 }}>نام</Text>
                 </Text>
-                <View style={styles.inputContainer}>
+                <View style={styles.formInputContainer}>
                   <TextInput
                     style={[
                       styles.inputField,
@@ -339,7 +344,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                 <Text style={styles.label}>
                   Phone Number - <Text style={{ fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 16 }}>فون نمبر</Text>
                 </Text>
-                <View style={styles.inputContainer}>
+                <View style={styles.formInputContainer}>
                   <TextInput
                     style={styles.inputField}
                     value={phone}
@@ -373,6 +378,14 @@ export default function CustomerSearchScreen({ navigation }: Props) {
               )}
             </Pressable>
           </View>
+        )}
+        
+        {viewState === 'search' && showNumPad && (
+          <TailorNumPad 
+            onKeyPress={handleSearchKeyPress}
+            onClose={() => setShowNumPad(false)}
+            hideBottomInset={true}
+          />
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -423,14 +436,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 56,
   },
+  inputContainer: { flex: 1, height: '100%', justifyContent: 'center' },
   searchInput: {
-    flex: 1,
-    height: '100%',
     marginLeft: 10,
     fontSize: 16,
     color: COLORS.text,
     fontWeight: '600',
-    paddingVertical: 0,
   },
 
   sectionTitle: {
@@ -467,7 +478,7 @@ const styles = StyleSheet.create({
   autoIdBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 20, gap: 16, borderWidth: 2, borderColor: colors.border },
   formGroup: { gap: 8 },
   label: { fontSize: 15, fontWeight: '800', color: COLORS.text, marginLeft: 4 },
-  inputContainer: { backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
+  formInputContainer: { backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
   inputField: { flex: 1, fontSize: 16, color: COLORS.text, fontWeight: '600', paddingVertical: 0 },
 
   // Footer Actions

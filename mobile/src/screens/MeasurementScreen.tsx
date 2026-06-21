@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, Platform, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, Platform, KeyboardAvoidingView, ActivityIndicator, Keyboard, Pressable } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import TailorNumPad from '../components/TailorNumPad';
+import BlinkingCursor from '../components/BlinkingCursor';
 import { supabase } from '../lib/supabase';
 import { colors } from '../theme/colors';
+import AppText from '../components/AppText';
 
 
 const MEASUREMENTS = [
@@ -43,6 +45,39 @@ export default function MeasurementScreen({ route, navigation }: any) {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerData | null>(null);
 
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  const fieldLayouts = useRef<{ [key: string]: number }>({});
+  const [gridY, setGridY] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeField && isNumPadVisible) {
+      const fieldY = fieldLayouts.current[activeField];
+      if (fieldY !== undefined) {
+        // Scroll to the active field. gridY is the section's top offset.
+        // We subtract 60 to keep it nicely centered and not hugging the top.
+        const targetY = Math.max(0, gridY + fieldY - 60);
+        scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+      }
+    }
+  }, [activeField, isNumPadVisible, gridY]);
+
   const searchCustomers = useCallback(async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -60,12 +95,7 @@ export default function MeasurementScreen({ route, navigation }: any) {
         .order('created_at', { ascending: false })
         .limit(5);
 
-      const isNumeric = /^\d+$/.test(query.trim());
-      if (isNumeric) {
-        q = q.or(`phone.ilike.%${query.trim()}%,customer_number.eq.${Number(query.trim())}`);
-      } else {
-        q = q.ilike('name', `%${query.trim()}%`);
-      }
+      q = q.or(`phone.eq.${query.trim()},customer_number.eq.${Number(query.trim())}`);
 
       const { data, error } = await q;
       if (error) throw error;
@@ -115,6 +145,17 @@ export default function MeasurementScreen({ route, navigation }: any) {
   const handleKeyPress = (val: string) => {
     if (!activeField) return;
     
+    if (activeField === 'search') {
+      if (val === '⌫') {
+        setSearchQuery(prev => prev.slice(0, -1));
+      } else if (val === 'NEXT') {
+        closeNumPad();
+      } else if (/^[\d.½]$/.test(val)) {
+        setSearchQuery(prev => prev + val);
+      }
+      return;
+    }
+
     if (val === '⌫') {
       setMeasurements(prev => ({
         ...prev,
@@ -127,7 +168,7 @@ export default function MeasurementScreen({ route, navigation }: any) {
       } else {
         closeNumPad();
       }
-    } else if (/^[\d.]$/.test(val) || ['¼', '½', '¾'].includes(val)) {
+    } else if (/^[\d.½]$/.test(val)) {
       setMeasurements(prev => ({
         ...prev,
         [activeField]: (prev[activeField] || '') + val
@@ -167,6 +208,7 @@ export default function MeasurementScreen({ route, navigation }: any) {
   };
 
   const openNumPad = (fieldId: string) => {
+    Keyboard.dismiss();
     setActiveField(fieldId);
     setIsNumPadVisible(true);
   };
@@ -177,12 +219,13 @@ export default function MeasurementScreen({ route, navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'top']}>
       <KeyboardAvoidingView 
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView 
+          ref={scrollViewRef}
           style={styles.scroll} 
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top || 20 }]} 
           keyboardShouldPersistTaps="handled"
@@ -202,28 +245,39 @@ export default function MeasurementScreen({ route, navigation }: any) {
           <View style={styles.searchSection}>
             {selectedCustomer ? (
               <View style={styles.selectedCustomerCard}>
-                <View style={{flex: 1}}>
-                  <Text style={styles.selectedCustomerLabel}>Customer Profile</Text>
-                  <Text style={styles.selectedCustomerName} numberOfLines={1}>{selectedCustomer.name}</Text>
-                  <Text style={styles.selectedCustomerPhone}>{selectedCustomer.phone}</Text>
+                <View style={{flex: 1, gap: 0}}>
+                  <Text style={styles.selectedCustomerLabel}>Selected Customer</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <AppText style={[styles.selectedCustomerName, { overflow: 'visible' }]} numberOfLines={1}>
+                        {selectedCustomer.name || 'Unnamed'}
+                      </AppText>
+                    </View>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 }}>
+                      #{selectedCustomer.customer_number}
+                    </Text>
+                  </View>
+                  <Text style={styles.selectedCustomerPhone}>{selectedCustomer.phone || 'No phone'}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setSelectedCustomer(null); setMeasurements({}); }} style={styles.clearCustomerBtn}>
-                  <Ionicons name="close-circle" size={24} color={colors.textOpacity(0.4)} />
+                  <Ionicons name="close-circle" size={24} color={colors.primary} />
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.searchContainer}>
+              <Pressable 
+                style={[styles.searchContainer, activeField === 'search' && { borderColor: colors.primary, borderWidth: 1 }]} 
+                onPress={() => openNumPad('search')}
+              >
                 <Ionicons name="search" size={20} color={colors.textOpacity(0.4)} style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search old customer to auto-fill..."
-                  placeholderTextColor={colors.textOpacity(0.4)}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  returnKeyType="search"
-                />
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[styles.searchInput, !searchQuery && { color: colors.textOpacity(0.4) }, { flex: 0 }]}>
+                    {searchQuery}
+                    {!searchQuery && activeField !== 'search' && " Search old customer to auto-fill..."}
+                  </Text>
+                  {activeField === 'search' && <BlinkingCursor />}
+                </View>
                 {isSearching && <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 16 }} />}
-              </View>
+              </Pressable>
             )}
 
             {!selectedCustomer && searchResults.length > 0 && (
@@ -231,14 +285,20 @@ export default function MeasurementScreen({ route, navigation }: any) {
                 {searchResults.map(c => (
                   <TouchableOpacity key={c.id} style={styles.searchResultItem} onPress={() => handleSelectCustomer(c)}>
                     <View style={styles.searchResultAvatar}>
-                      <Ionicons name="person" size={16} color={colors.primary} />
+                      <Ionicons name="person" size={20} color={colors.text} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.searchResultName}>{c.name}</Text>
+                    <View style={{ flex: 1, gap: 0 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <AppText style={[styles.searchResultName, { overflow: 'visible' }]}>
+                            {c.name || 'Unnamed'}
+                          </AppText>
+                        </View>
+                        <Text style={{ fontSize: 18, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 }}>
+                          #{c.customer_number}
+                        </Text>
+                      </View>
                       <Text style={styles.searchResultPhone}>{c.phone || 'No phone'}</Text>
-                    </View>
-                    <View style={styles.searchResultIdTag}>
-                      <Text style={styles.searchResultIdText}>#{c.customer_number}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -247,9 +307,9 @@ export default function MeasurementScreen({ route, navigation }: any) {
           </View>
 
           {/* Measurements Grid */}
-          <View style={styles.section}>
+          <View style={styles.section} onLayout={(e) => setGridY(e.nativeEvent.layout.y)}>
             <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, includeFontPadding: false, marginTop: -4 }]}>
-              {garmentType === 'Kameez Shalwar' ? 'قمیض شلوار پیمائش' : `${garmentType} Measurements`}
+              {garmentType === 'Kameez Shalwar' ? 'قمیض شلوار کی پیمائش درج کریں' : `${garmentType} Measurements`}
             </Text>
             <View style={styles.grid}>
               {MEASUREMENTS.map(field => {
@@ -260,6 +320,9 @@ export default function MeasurementScreen({ route, navigation }: any) {
                     key={field.id}
                     style={[styles.measureInput, isActive ? styles.measureInputActive : null]}
                     onPress={() => openNumPad(field.id)}
+                    onLayout={(e) => {
+                      fieldLayouts.current[field.id] = e.nativeEvent.layout.y;
+                    }}
                   >
                     <View style={styles.measureLabelRow}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -334,6 +397,11 @@ export default function MeasurementScreen({ route, navigation }: any) {
               onChangeText={setNotes}
               multiline
               textAlignVertical="top"
+              onFocus={() => {
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 100);
+              }}
             />
           </View>
         </ScrollView>
@@ -344,14 +412,14 @@ export default function MeasurementScreen({ route, navigation }: any) {
             onClose={closeNumPad}
             activeFieldLabel={MEASUREMENTS.find(f => f.id === activeField)?.label.split(' / ')[0] || ''}
           />
-        ) : (
+        ) : !isKeyboardVisible ? (
           <View style={styles.bottomBar}>
             <TouchableOpacity style={styles.nextButton} onPress={handleConfirm}>
-              <Text style={styles.nextButtonText}>Next step</Text>
-              <Ionicons name="arrow-forward" size={20} color={colors.text} />
+              <Text style={styles.nextButtonText}>Save</Text>
+              <Ionicons name="save-outline" size={20} color={colors.text} />
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -371,14 +439,12 @@ const styles = StyleSheet.create({
   searchSection: { marginBottom: 24, zIndex: 10 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 16, height: 56 },
   searchIcon: { marginLeft: 16, marginRight: 12 },
-  searchInput: { flex: 1, height: '100%', fontSize: 16, color: colors.text, fontWeight: '500' },
+  searchInput: { flex: 1, fontSize: 16, color: colors.text, fontWeight: '500' },
   searchResults: { backgroundColor: colors.white, borderRadius: 16, marginTop: 8, borderWidth: 1, borderColor: colors.border, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 }, android: { elevation: 4 } }) },
-  searchResultItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
-  searchResultAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  searchResultName: { fontSize: 15, fontWeight: '700', color: colors.text },
-  searchResultPhone: { fontSize: 13, color: colors.textOpacity(0.6), marginTop: 2 },
-  searchResultIdTag: { backgroundColor: colors.surface, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
-  searchResultIdText: { fontSize: 13, fontWeight: '800', color: colors.text },
+  searchResultItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  searchResultAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, borderColor: colors.text, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  searchResultName: { fontSize: 16, fontWeight: '800', color: colors.text, lineHeight: 20 },
+  searchResultPhone: { fontSize: 13, color: colors.textOpacity(0.6), marginTop: 2, fontWeight: '600' },
   
   selectedCustomerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primaryLight, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.primary },
   selectedCustomerLabel: { fontSize: 11, fontWeight: '800', color: colors.primary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
@@ -408,7 +474,7 @@ const styles = StyleSheet.create({
 
   notesInput: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, height: 100, fontSize: 15, color: colors.text },
 
-  bottomBar: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: Platform.OS === 'ios' ? 0 : 16, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
+  bottomBar: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: Platform.OS === 'ios' ? 24 : 16, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
   nextButton: { backgroundColor: colors.primary, flexDirection: 'row', height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', gap: 8 },
   nextButtonText: { color: colors.text, fontSize: 17, fontWeight: '800' },
 });

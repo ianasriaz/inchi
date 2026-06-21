@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from './src/lib/supabase';
 import { Session } from '@supabase/supabase-js';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import AuthScreen from './src/screens/AuthScreen';
 import CustomerSearchScreen from './src/screens/CustomerSearchScreen';
@@ -59,6 +60,15 @@ export type MainTabParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    },
+  },
+});
+
 const appTheme = {
   ...DefaultTheme,
   colors: {
@@ -92,19 +102,19 @@ function MainTabs() {
           shadowOffset: { width: 0, height: -10 },
           shadowOpacity: 0.03,
           shadowRadius: 20,
-          minHeight: 65 + Math.max(insets.bottom, 0),
+          minHeight: 65 + Math.max(insets.bottom, 12),
           paddingTop: 12,
-          paddingBottom: Math.max(insets.bottom, 24),
+          paddingBottom: Math.max(insets.bottom + 8, 28),
         },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'help-outline';
 
           if (route.name === 'Dashboard') {
-            iconName = focused ? 'home' : 'home-outline';
+            iconName = focused ? 'storefront' : 'storefront-outline'; // Represents the Dukaan (Shop)
           } else if (route.name === 'Orders') {
-            iconName = focused ? 'list' : 'list-outline';
+            iconName = focused ? 'book' : 'book-outline'; // Represents the Register/Khata
           } else if (route.name === 'Customers') {
-            iconName = focused ? 'people' : 'people-outline';
+            iconName = focused ? 'people' : 'people-outline'; // Represents Gahak (Customers)
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -141,15 +151,18 @@ export default function App() {
 
   if (!session) {
     return (
-      <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <AuthScreen />
-      </SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <StatusBar style="dark" />
+          <AuthScreen />
+        </SafeAreaProvider>
+      </QueryClientProvider>
     );
   }
 
   return (
-    <SafeAreaProvider>
+    <QueryClientProvider client={queryClient}>
+      <SafeAreaProvider>
       <NavigationContainer theme={appTheme}>
         <StatusBar style="dark" />
         <Stack.Navigator
@@ -179,5 +192,6 @@ export default function App() {
       </NavigationContainer>
       <Toast />
     </SafeAreaProvider>
+    </QueryClientProvider>
   );
 }

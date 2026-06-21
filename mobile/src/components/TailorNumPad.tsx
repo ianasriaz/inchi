@@ -1,28 +1,33 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, Pressable, View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
 type TailorNumPadKey =
   | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' | '.'
-  | '¼' | '½' | '¾' | '⌫' | 'NEXT';
+  | '½' | '⌫' | 'NEXT';
 
 type TailorNumPadProps = {
   onKeyPress: (key: TailorNumPadKey) => void;
   onClose?: () => void;
   activeFieldLabel?: string;
+  hideBottomInset?: boolean;
 };
 
 const KEYS: TailorNumPadKey[][] = [
-  ['1', '2', '3', '¼'],
-  ['4', '5', '6', '½'],
-  ['7', '8', '9', '¾'],
-  ['.', '0', '⌫', 'NEXT'],
+  ['1', '2', '3'],
+  ['4', '5', '6'],
+  ['7', '8', '9'],
+  ['.', '0', '⌫'],
+  ['½', 'NEXT'],
 ];
 
-export default function TailorNumPad({ onKeyPress, onClose, activeFieldLabel }: TailorNumPadProps) {
+export default function TailorNumPad({ onKeyPress, onClose, activeFieldLabel, hideBottomInset }: TailorNumPadProps) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: hideBottomInset ? 0 : insets.bottom }]}>
       {onClose && (
         <View style={styles.toolbar}>
           <View style={styles.toolbarHandle} />
@@ -36,19 +41,22 @@ export default function TailorNumPad({ onKeyPress, onClose, activeFieldLabel }: 
         {KEYS.map((row, rowIndex) => (
           <View key={rowIndex} style={styles.row}>
             {row.map((key) => {
-              const isActionKey = key === '⌫' || key === 'NEXT' || key === '¼' || key === '½' || key === '¾';
+              const isActionKey = key === '⌫' || key === 'NEXT' || key === '½';
 
               return (
-                <TouchableOpacity
+                <Pressable
                   key={key}
                   accessibilityRole="button"
                   accessibilityLabel={`Key ${key}`}
-                  activeOpacity={0.7}
-                  style={[styles.key, isActionKey && styles.actionKey]}
+                  style={({ pressed }) => [
+                    styles.key, 
+                    isActionKey && styles.actionKey,
+                    pressed && { backgroundColor: 'rgba(22, 29, 38, 0.1)', transform: [{ scale: 0.96 }] }
+                  ]}
                   onPress={() => onKeyPress(key)}
                 >
                   <Text style={[styles.keyText, isActionKey && styles.actionKeyText]}>{key}</Text>
-                </TouchableOpacity>
+                </Pressable>
               );
             })}
           </View>
@@ -93,7 +101,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 8,
   },
   row: {
     flexDirection: 'row',

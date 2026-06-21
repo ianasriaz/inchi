@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ViewShot from 'react-native-view-shot';
 import { colors } from '../theme/colors';
-
+import { containsUrdu } from '../utils/textUtils';
+import AppText from '../components/AppText';
 
 export default function InvoiceScreen({ route, navigation }: any) {
   const { customerId, customerName, customerPhone, garmentType, measurements, style, notes } = route.params;
@@ -161,7 +162,8 @@ export default function InvoiceScreen({ route, navigation }: any) {
 
         <div style="border: 1px solid #ccc; margin-bottom: 20px; border-radius: 4px;">
           <div style="background: #f8f8f8; padding: 10px 15px; border-bottom: 1px solid #ccc; font-size: 20px; font-weight: bold; text-transform: uppercase;">
-            <span style="color: #555; font-size: 14px; text-transform: none; font-weight: normal; margin-right: 5px;">Customer Name <span class="urdu-label">(نام)</span>:</span> ${customerName}
+            <span style="color: #555; font-size: 14px; text-transform: none; font-weight: normal; margin-right: 5px; vertical-align: middle;">Customer Name <span class="urdu-label">(نام)</span>:</span> 
+            <span style="${containsUrdu(customerName) ? "font-family: 'Noto Nastaliq Urdu', serif; font-weight: normal; font-size: 20px; text-transform: none; vertical-align: middle;" : "vertical-align: middle;"}">${customerName}</span>
           </div>
           <div style="display: flex; flex-wrap: wrap; padding: 10px 15px; font-size: 15px;">
             <div style="width: 50%; margin-bottom: 8px;"><strong>Booking <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(تاریخ)</span>:</strong> ${bookingDate}</div>
@@ -235,7 +237,10 @@ export default function InvoiceScreen({ route, navigation }: any) {
       <body>
         <div class="header">
           <h1 class="title">MASTER COPY &nbsp;|&nbsp; <span class="urdu-label">ماسٹر کاپی</span></h1>
-          <div class="meta-text">Order #${orderNumber} &nbsp;&nbsp;|&nbsp;&nbsp; Customer: ${customerName}</div>
+          <div class="meta-text">
+            <span style="vertical-align: middle;">Order #${orderNumber} &nbsp;&nbsp;|&nbsp;&nbsp; Customer:</span> 
+            <span style="${containsUrdu(customerName) ? "font-family: 'Noto Nastaliq Urdu', serif; font-weight: normal; font-size: 24px; vertical-align: middle;" : "vertical-align: middle;"}">${customerName}</span>
+          </div>
         </div>
         
         <table class="measurements-table">
@@ -344,10 +349,12 @@ export default function InvoiceScreen({ route, navigation }: any) {
 
             <View style={{ borderWidth: 1, borderColor: '#ccc', marginBottom: 16, borderRadius: 4, overflow: 'hidden' }}>
               <View style={{ backgroundColor: '#f8f8f8', padding: 12, borderBottomWidth: 1, borderBottomColor: '#ccc' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 13, color: '#555', marginRight: 6 }}>Customer Name <Text style={styles.urduFont}>(نام)</Text>:</Text>
-                  <Text style={{ fontSize: 18, fontWeight: 'bold', textTransform: 'uppercase' }}>{customerName}</Text>
-                </View>
+                <Text>
+                  <Text style={{ fontSize: 13, color: '#555' }}>Customer Name <Text style={styles.urduFont}>(نام)</Text>: </Text>
+                  <AppText style={{ fontSize: 18, fontWeight: 'bold', textTransform: 'uppercase', color: '#000' }}>
+                    {customerName}
+                  </AppText>
+                </Text>
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 12 }}>
                 <View style={{ width: '50%', marginBottom: 12 }}>

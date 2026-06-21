@@ -82,10 +82,11 @@ export default function NewCustomerPromptScreen({ route, navigation }: Props) {
 
         <View style={styles.content}>
           <View style={styles.iconContainer}>
-            <Ionicons name="person-add" size={48} color={COLORS.accent} />
+            <Ionicons name="person-add" size={40} color={COLORS.text} />
           </View>
-          <Text style={styles.title}>New Customer</Text>
-          <Text style={styles.subtitle}>Who are these measurements for?</Text>
+          <Text style={[styles.title, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 32, includeFontPadding: false, marginTop: -8, marginBottom: 32 }]}>
+            گاہک کی تفصیل
+          </Text>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
@@ -167,8 +168,10 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 80,
     height: 80,
-    borderRadius: 24,
-    backgroundColor: colors.primaryLight,
+    borderRadius: 40,
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.text,
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -178,13 +181,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '900',
     color: COLORS.text,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textOpacity(0.6),
-    marginBottom: 40,
     textAlign: 'center',
   },
   form: {

@@ -3,14 +3,18 @@ import { FlatList, Linking, Pressable, StyleSheet, Text, View, RefreshControl, T
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
 import Toast from 'react-native-toast-message';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import AppText from '../components/AppText';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { generateCustomerHtml } from '../utils/invoiceGenerator';
+import TailorNumPad from '../components/TailorNumPad';
+import BlinkingCursor from '../components/BlinkingCursor';
 import { colors } from '../theme/colors';
 
 
@@ -41,60 +45,66 @@ const URDU_FONT = 'NotoNastaliqUrdu';
 
 export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
-  const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showNumPad, setShowNumPad] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  const [activeFilter, setActiveFilter] = useState<'stitching' | 'ready' | 'delivered'>('stitching');
+  const { data: user } = useQuery({
+    queryKey: ['authUser'],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data.user;
+    },
+  });
+
+  const { data: orders = [], isLoading: isInitialLoading, isRefetching: isRefreshing } = useQuery({
+    queryKey: ['orders', user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*, customers(name, phone)')
+        .eq('shop_id', user!.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data as OrderRow[]) ?? [];
+    },
+  });
+
+  const [activeFilter, setActiveFilter] = useState<'all' | 'stitching' | 'ready' | 'delivered'>('all');
+
+  const handleKeyPress = (key: string) => {
+    if (key === '⌫') {
+      setSearchQuery(prev => prev.slice(0, -1));
+    } else if (key === 'NEXT') {
+      setShowNumPad(false);
+    } else if (/^[\d.½]$/.test(key)) {
+      setSearchQuery(prev => prev + key);
+    }
+  };
 
   const filteredOrders = useMemo(() => {
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.trim().toLowerCase();
+      return orders.filter(order => {
+        const orderNum = order.order_number?.toString() || '';
+        const phoneNum = order.customers?.phone?.toLowerCase() || '';
+        return orderNum.includes(lowerQuery) || phoneNum.includes(lowerQuery);
+      });
+    }
+
     let result = orders;
     if (activeFilter === 'stitching') result = result.filter(o => o.status === 'pending');
     else if (activeFilter === 'ready') result = result.filter(o => o.status === 'ready');
     else if (activeFilter === 'delivered') result = result.filter(o => o.status === 'delivered');
-
-    if (!searchQuery) return result;
-    const lowerQuery = searchQuery.toLowerCase();
-    return result.filter(order => {
-      const orderNum = order.order_number?.toString() || '';
-      const customerName = order.customers?.name?.toLowerCase() || '';
-      return orderNum.includes(lowerQuery) || customerName.includes(lowerQuery);
-    });
+    return result;
   }, [orders, searchQuery, activeFilter]);
 
-  const fetchOrders = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*, customers(name, phone)')
-      .eq('shop_id', user.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Failed to fetch orders:', error);
-      setIsInitialLoading(false);
-      return;
-    }
-
-    setOrders((data as OrderRow[]) ?? []);
-    setIsInitialLoading(false);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchOrders();
-    }, [fetchOrders]),
-  );
-
   const onRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await fetchOrders();
-    setIsRefreshing(false);
-  }, [fetchOrders]);
+    await queryClient.invalidateQueries({ queryKey: ['orders'] });
+    await queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+  }, [queryClient]);
 
   const formatPhoneForWhatsApp = (phone: string | null | undefined) => {
     if (!phone) return '';
@@ -146,21 +156,40 @@ export default function OrdersScreen() {
     }
   };
 
-  const handleMarkReady = async (orderId: string) => {
-    try {
+  const markReadyMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const { error } = await supabase.from('orders').update({ status: 'ready' }).eq('id', orderId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+    },
+    onError: (err: any) => Alert.alert('Error', err.message),
+  });
+
+  const deliverOrderMutation = useMutation({
+    mutationFn: async (order: OrderRow) => {
       const { error } = await supabase
         .from('orders')
-        .update({ status: 'ready' })
-        .eq('id', orderId);
+        .update({ status: 'delivered', advance_amount: order.total_amount })
+        .eq('id', order.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      Toast.show({
+        type: 'success',
+        text1: 'Order Delivered',
+        text2: 'Balance collected successfully.',
+      });
+    },
+    onError: (err: any) => Alert.alert('Error', err.message),
+  });
 
-      if (error) {
-        Alert.alert('Error', error.message);
-      } else {
-        setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'ready' } : o));
-      }
-    } catch (err: any) {
-      Alert.alert('Error', err.message);
-    }
+  const handleMarkReady = (orderId: string) => {
+    markReadyMutation.mutate(orderId);
   };
 
   const handleDeliverOrder = (order: OrderRow) => {
@@ -172,26 +201,7 @@ export default function OrdersScreen() {
         { 
           text: 'Deliver', 
           style: 'default',
-          onPress: async () => {
-            const { error } = await supabase
-              .from('orders')
-              .update({ 
-                status: 'delivered', 
-                advance_amount: order.total_amount 
-              })
-              .eq('id', order.id);
-
-            if (error) {
-              Alert.alert('Error', error.message);
-            } else {
-              setOrders(orders.map(o => o.id === order.id ? { ...o, status: 'delivered', balance_amount: 0, advance_amount: order.total_amount } : o));
-              Toast.show({
-                type: 'success',
-                text1: 'Order Delivered',
-                text2: 'Balance collected successfully.',
-              });
-            }
-          }
+          onPress: () => deliverOrderMutation.mutate(order)
         }
       ]
     );
@@ -212,26 +222,27 @@ export default function OrdersScreen() {
             <Text style={{ fontSize: 28, fontWeight: '900', color: COLORS.accent, letterSpacing: -1, marginBottom: 4 }}>
               #{item.order_number}
             </Text>
-            <Text 
+            <AppText 
               style={[
                 styles.orderCustomerName,
-                { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 6 },
-                containsUrdu(customerName) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 20, lineHeight: 45, paddingVertical: 10, overflow: 'visible', marginBottom: 0 }
+                { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 6, paddingVertical: 4 }
               ]}
             >
               {customerName}
-            </Text>
+            </AppText>
             <Text style={{ fontSize: 14, color: colors.textOpacity(0.5), fontWeight: '700' }}>
               {item.garment_type}
             </Text>
-            <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 13, color: colors.textOpacity(0.5), fontWeight: '600' }}>
-                Booked: {createdDate}
-              </Text>
-              <View style={styles.dateDot} />
-              <Text style={{ fontSize: 13, color: COLORS.text, fontWeight: '800' }}>
-                Due: {pickupDate}
-              </Text>
+            <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', width: '100%' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: COLORS.text, fontWeight: '800', marginRight: 6 }}>{pickupDate}</Text>
+                <Text style={{ fontFamily: 'NotoNastaliqUrdu', fontSize: 16, color: COLORS.text, includeFontPadding: false, marginTop: Platform.OS === 'ios' ? -4 : -6 }}>واپسی</Text>
+              </View>
+              <View style={[styles.dateDot, { marginHorizontal: 12 }]} />
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: colors.textOpacity(0.5), fontWeight: '600', marginRight: 6 }}>{createdDate}</Text>
+                <Text style={{ fontFamily: 'NotoNastaliqUrdu', fontSize: 16, color: colors.textOpacity(0.5), includeFontPadding: false, marginTop: Platform.OS === 'ios' ? -4 : -6 }}>بکنگ</Text>
+              </View>
             </View>
           </View>
           
@@ -388,14 +399,28 @@ export default function OrdersScreen() {
               <View style={styles.headerContainer}>
                 <Text style={styles.headerTitle}>Bookings</Text>
               </View>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by Order # or Customer Name..."
-                placeholderTextColor={colors.textOpacity(0.5)}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
+              <View style={[styles.searchBar, showNumPad && { borderColor: colors.primary, borderWidth: 1 }]}>
+                <Ionicons name="search" size={20} color={colors.textOpacity(0.5)} />
+                <Pressable 
+                  style={[styles.inputContainer, { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }]} 
+                  onPress={() => setShowNumPad(true)}
+                >
+                  <Text style={[styles.searchText, !searchQuery && { color: colors.textOpacity(0.4) }]}>
+                    {searchQuery}
+                    {!searchQuery && !showNumPad && " Search by Order # or Phone..."}
+                  </Text>
+                  {showNumPad && <BlinkingCursor />}
+                </Pressable>
+                {searchQuery.length > 0 ? (
+                  <Pressable onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+                    <Ionicons name="close-circle" size={20} color={colors.textOpacity(0.3)} />
+                  </Pressable>
+                ) : null}
+              </View>
               <View style={{ flexDirection: 'row', gap: 8, paddingBottom: 8 }}>
+                <Pressable style={[styles.filterChip, activeFilter === 'all' && styles.filterChipActive]} onPress={() => setActiveFilter('all')}>
+                  <Text style={[styles.filterChipText, activeFilter === 'all' && styles.filterChipTextActive]} numberOfLines={1} adjustsFontSizeToFit>تمام</Text>
+                </Pressable>
                 <Pressable style={[styles.filterChip, activeFilter === 'stitching' && styles.filterChipActive]} onPress={() => setActiveFilter('stitching')}>
                   <Text style={[styles.filterChipText, activeFilter === 'stitching' && styles.filterChipTextActive]} numberOfLines={1} adjustsFontSizeToFit>سلائی جاری ہے</Text>
                 </Pressable>
@@ -412,6 +437,13 @@ export default function OrdersScreen() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
         {renderDetailsModal()}
+        {showNumPad && (
+          <TailorNumPad 
+            onKeyPress={handleKeyPress}
+            onClose={() => setShowNumPad(false)}
+            hideBottomInset={true}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -425,7 +457,9 @@ const styles = StyleSheet.create({
   headerContainer: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
   headerTitle: { color: COLORS.text, fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
   headerSubtitle: { fontFamily: URDU_FONT, color: colors.textOpacity(0.5), fontSize: 22, fontWeight: '400', lineHeight: 34, paddingTop: 6 },
-  searchInput: { backgroundColor: colors.white, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: COLORS.text, borderWidth: 1, borderColor: colors.border },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 16, paddingHorizontal: 16, height: 56, borderWidth: 1, borderColor: colors.border },
+  inputContainer: { flex: 1, height: '100%', justifyContent: 'center' },
+  searchText: { marginLeft: 10, fontSize: 16, color: COLORS.text, fontWeight: '600' },
   emptyOrdersBlock: { borderRadius: 24, padding: 24, backgroundColor: colors.white, alignItems: 'center' },
   emptyStateTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700', marginBottom: 6 },
   emptyStateSubtitle: { color: 'rgba(22, 29, 38, 0.72)', fontSize: 14, lineHeight: 20, textAlign: 'center' },

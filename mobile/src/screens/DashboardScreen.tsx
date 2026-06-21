@@ -2,85 +2,101 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, StyleSheet, Text, View, RefreshControl, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootStackParamList, MainTabParamList } from '../../App';
+import { colors } from '../theme/colors';
+import AppText from '../components/AppText';
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<MainTabParamList, 'Dashboard'>,
   NativeStackScreenProps<RootStackParamList>
 >;
 
-import { colors } from '../theme/colors';
-
 const URDU_FONT = 'NotoNastaliqUrdu';
 const URDU_FONT_BOLD = 'NotoNastaliqUrduBold';
 
 export default function DashboardScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    stitchingOrders: 0,
-    readyOrders: 0,
-    deliveredOrders: 0,
-  });
-  const [shopName, setShopName] = useState('ڈیش بورڈ');
+  const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentDate(new Date());
-    }, 1000);
+    }, 60000);
     return () => clearInterval(timer);
   }, []);
 
-  const fetchStats = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+  const { data: user } = useQuery({
+    queryKey: ['authUser'],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data.user;
+    },
+  });
 
-    const { data: shopData } = await supabase.from('shops').select('name').eq('id', user.id).single();
-    if (shopData?.name) {
-      setShopName(shopData.name);
-    }
+  const { data: shopName = 'ڈیش بورڈ', isRefetching: isShopRefetching } = useQuery({
+    queryKey: ['shopName', user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data } = await supabase.from('shops').select('name').eq('id', user!.id).single();
+      return data?.name || 'ڈیش بورڈ';
+    },
+  });
 
-    const { data, error } = await supabase
-      .from('orders')
-      .select('status, created_at')
-      .eq('shop_id', user.id);
+  const { data: stats = { stitchingOrders: 0, readyOrders: 0, deliveredOrders: 0 }, isRefetching: isStatsRefetching } = useQuery({
+    queryKey: ['dashboardStats', user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('orders').select('status').eq('shop_id', user!.id);
+      if (error) throw error;
+      const stitchingOrders = data?.filter(o => o.status === 'pending').length || 0;
+      const readyOrders = data?.filter(o => o.status === 'ready').length || 0;
+      const deliveredOrders = data?.filter(o => o.status === 'delivered').length || 0;
+      return { stitchingOrders, readyOrders, deliveredOrders };
+    },
+  });
 
-    if (error) {
-      console.error('Failed to fetch stats:', error);
-      return;
-    }
-
-    if (data) {
-      const stitchingOrders = data.filter(o => o.status === 'pending').length;
-      const readyOrders = data.filter(o => o.status === 'ready').length;
-      const deliveredOrders = data.filter(o => o.status === 'delivered').length;
-      setStats({ stitchingOrders, readyOrders, deliveredOrders });
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchStats();
-    }, [fetchStats]),
-  );
+  const isRefreshing = isShopRefetching || isStatsRefetching;
 
   const onRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await fetchStats();
-    setIsRefreshing(false);
-  }, [fetchStats]);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['shopName'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] })
+    ]);
+  }, [queryClient]);
+
+  const formattedDate = currentDate.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase();
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'top']}>
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <View style={styles.headerTop}>
+          <View style={styles.logoRow}>
+            <View style={styles.headerIconCircle}>
+              <Ionicons name="checkmark-circle" size={24} color={colors.white} />
+            </View>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <AppText style={styles.logoTextUrdu} numberOfLines={1}>{shopName}</AppText>
+            </View>
+          </View>
+          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.headerIconCircle}>
+            <Ionicons name="settings-outline" size={20} color={colors.white} />
+          </Pressable>
+        </View>
+        <View style={styles.headerTitles}>
+          <Text style={styles.dateText}>{formattedDate}</Text>
+        </View>
+      </View>
+
       <ScrollView
-        style={styles.screen}
+        style={styles.scrollArea}
         contentContainerStyle={styles.scrollContent}
+        bounces={false}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -90,299 +106,300 @@ export default function DashboardScreen({ navigation }: Props) {
           />
         }
       >
-        <View style={styles.content}>
-
-          {/* Header Area */}
-          <View style={styles.headerContainer}>
-            <View style={styles.shopNameBadge}>
-              <Text style={styles.shopNameText} numberOfLines={1}>
-                {shopName}
-              </Text>
+        <View style={styles.cardsContainer}>
+          {/* In Progress Card */}
+          <View style={styles.inProgressCard}>
+            <View style={styles.inProgressTopRow}>
+              <View style={styles.inProgressHeader}>
+                <View style={styles.smallIconCircle}>
+                  <Ionicons name="cut-outline" size={16} color={colors.primary} />
+                </View>
+              </View>
             </View>
-            <View style={styles.headerActions}>
-              <Pressable onPress={() => navigation.navigate('Revenue')} style={styles.iconButton}>
-                <Ionicons name="wallet-outline" size={22} color={colors.text} />
-              </Pressable>
-              <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
-                <Ionicons name="settings-outline" size={22} color={colors.text} />
-              </Pressable>
+            <View style={styles.inProgressBody}>
+              <View style={styles.inProgressLeft}>
+                <Text style={styles.bigNumber}>{stats.stitchingOrders}</Text>
+                <Text style={styles.urduLabel}>سلائی جاری ہے</Text>
+              </View>
+              <View style={styles.largeIconBox}>
+                <Ionicons name="cut-outline" size={36} color={colors.primary} />
+              </View>
             </View>
           </View>
 
-          {/* Date & Time Area */}
-          <View style={styles.dateTimeContainer}>
-            <View style={styles.dateBadge}>
-              <Ionicons name="calendar-outline" size={16} color={colors.textOpacity(0.6)} />
-              <Text style={styles.dateText}>
-                {currentDate.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-              </Text>
+          {/* Row Cards */}
+          <View style={styles.rowCards}>
+            {/* Completed Card */}
+            <View style={styles.halfCardCompleted}>
+              <View style={styles.smallIconCircleCompleted}>
+                <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={styles.bigNumberSmall}>{stats.readyOrders}</Text>
+              <View style={styles.halfCardBottom}>
+                <Text style={styles.urduLabelRight}>سلائی مکمل</Text>
+              </View>
             </View>
-            <View style={styles.timeBadge}>
-              <View style={styles.timeIndicator} />
-              <Text style={styles.timeText}>
-                {currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-              </Text>
+
+            {/* To Collect Card */}
+            <View style={styles.halfCardToCollect}>
+              <View style={styles.smallIconCircleToCollect}>
+                <Ionicons name="bag-handle-outline" size={16} color={colors.warning} />
+              </View>
+              <Text style={styles.bigNumberSmall}>{stats.deliveredOrders}</Text>
+              <View style={styles.halfCardBottom}>
+                <Text style={styles.urduLabelRightToCollect}>وصول کر لیے</Text>
+              </View>
             </View>
           </View>
 
-          {/* Stats Grid */}
-          <View style={styles.statsGrid}>
-            <View style={[styles.statBox, styles.statBoxFull]}>
-              <View style={styles.statBoxTop}>
-                <View style={[styles.iconCircle, { backgroundColor: colors.white }]}>
-                  <Ionicons name="cut-outline" size={24} color={colors.text} />
-                </View>
-                <Text style={[styles.statValueGiant, { color: colors.white }]}>{stats.stitchingOrders}</Text>
-              </View>
-              <Text style={[styles.statLabel, { color: colors.textOpacity(0.7) }]}>سلائی جاری ہے</Text>
+          {/* New Booking Button */}
+          <Pressable style={styles.newBookingBtn} onPress={() => navigation.navigate('GarmentSelect')}>
+            <Text style={styles.newBookingTextUrdu}>بکنگ کریں</Text>
+            <View style={styles.newBookingIconCircle}>
+              <Ionicons name="arrow-forward" size={18} color={colors.white} />
             </View>
-
-            <View style={styles.statBox}>
-              <View style={styles.statBoxTop}>
-                <View style={styles.iconCircleSmall}>
-                  <Ionicons name="checkmark-done" size={20} color={colors.primary} />
-                </View>
-                <Text style={[styles.statValue, { color: colors.primary }]}>{stats.readyOrders}</Text>
-              </View>
-              <Text style={styles.statLabel}>سلائی مکمل ہے</Text>
-            </View>
-
-            <View style={styles.statBox}>
-              <View style={styles.statBoxTop}>
-                <View style={styles.iconCircleSmall}>
-                  <Ionicons name="bag-check-outline" size={20} color={colors.primary} />
-                </View>
-                <Text style={[styles.statValue, { color: colors.primary }]}>{stats.deliveredOrders}</Text>
-              </View>
-              <Text style={styles.statLabel}>وصول کر لیے</Text>
-            </View>
-          </View>
-
+          </Pressable>
         </View>
       </ScrollView>
-
-      {/* Floating Action Button for New Booking */}
-      <View style={styles.footer}>
-        <Pressable style={styles.fabButton} onPress={() => navigation.navigate('GarmentSelect')}>
-          <Ionicons name="shirt-outline" size={24} color={colors.white} style={styles.fabIcon} />
-          <Text style={styles.fabText}>New Booking</Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#FFFFFF',
   },
-  screen: {
-    flex: 1,
-    backgroundColor: colors.surface, // Slight off-white to make cards pop
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 120, // Extra padding so FAB doesn't cover content
-    flexGrow: 1,
-  },
-  content: {
-    gap: 24,
-  },
-
-  // Header Styles
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-    gap: 12,
-  },
-  shopNameBadge: {
-    flex: 1,
-    height: 48,
-    backgroundColor: colors.background,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...Platform.select({
-      ios: { shadowColor: colors.black, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6 },
-      android: { elevation: 2 }
-    }),
-  },
-  shopNameText: {
-    fontFamily: URDU_FONT_BOLD,
-    fontSize: 16,
-    color: colors.text,
-    textAlign: 'center',
-    includeFontPadding: false,
-    marginTop: Platform.OS === 'ios' ? -4 : -6,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  iconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...Platform.select({
-      ios: { shadowColor: colors.black, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6 },
-      android: { elevation: 2 },
-    }),
-  },
-
-  // Date & Time Styles
-  dateTimeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-    marginBottom: 8,
-  },
-  dateBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dateText: {
-    fontSize: 13,
-    color: colors.textOpacity(0.6),
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.background,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  timeIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  header: {
     backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  timeText: {
-    fontSize: 13,
-    color: colors.text,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-
-  // Stats Grid Styles
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'space-between',
-  },
-  statBox: {
-    width: '47.5%',
-    backgroundColor: colors.background,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...Platform.select({
-      ios: { shadowColor: colors.black, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.04, shadowRadius: 12 },
-      android: { elevation: 2 },
-    }),
-  },
-  statBoxFull: {
-    width: '100%',
-    backgroundColor: colors.primary,
-    borderColor: colors.text,
-    borderWidth: 1,
-  },
-  statBoxTop: {
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.background,
+  logoRow: {
+    flexShrink: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginRight: 16,
   },
-  iconCircleSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primaryLight, // Light mint tint
+  headerIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'center',
+    flexShrink: 0,
   },
-  statLabel: {
-    fontFamily: URDU_FONT_BOLD,
-    color: colors.textOpacity(0.6),
-    fontSize: 13,
-    lineHeight: 36,
-    paddingTop: 4,
-  },
-  statValue: {
-    color: colors.text,
-    fontSize: 32,
+  logoTextUrdu: {
     fontWeight: '900',
+    fontSize: 22,
+    color: colors.white,
+    marginTop: Platform.OS === 'ios' ? -4 : -6,
+    paddingVertical: 4,
   },
-  statValueGiant: {
-    color: colors.text,
+  logoTextSub: {
+    fontFamily: URDU_FONT,
+    fontSize: 10,
+    color: colors.white,
+    opacity: 0.8,
+    lineHeight: 14,
+  },
+  headerTitles: {
+    gap: 4,
+  },
+  dateText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 20,
+    flexGrow: 1,
+  },
+  cardsContainer: {
+    gap: 16,
+  },
+  // In Progress Card
+  inProgressCard: {
+    backgroundColor: colors.inProgressBackground,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(33, 160, 80, 0.15)',
+  },
+  inProgressTopRow: {
+    marginBottom: 16,
+  },
+  inProgressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  smallIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.inProgressIconBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inProgressTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  inProgressBody: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  inProgressLeft: {
+    justifyContent: 'flex-end',
+  },
+  bigNumber: {
     fontSize: 56,
     fontWeight: '900',
-    letterSpacing: -2,
+    color: colors.text,
+    lineHeight: 64,
+    marginBottom: -4,
   },
-
-  // Footer / FAB Styles
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
-    backgroundColor: colors.surface, // Solid background prevents text bleed
-    borderTopWidth: 1,
-    borderColor: colors.textOpacity(0.03),
+  urduLabel: {
+    fontFamily: URDU_FONT_BOLD,
+    fontSize: 18,
+    color: colors.textOpacity(0.8),
+    includeFontPadding: false,
+    paddingVertical: 2,
   },
-  fabButton: {
+  largeIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: colors.inProgressIconBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Row Cards
+  rowCards: {
     flexDirection: 'row',
-    width: '100%',
-    borderRadius: 24,
+    gap: 16,
+  },
+  halfCardCompleted: {
+    flex: 1,
+    backgroundColor: colors.completedBackground,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  halfCardToCollect: {
+    flex: 1,
+    backgroundColor: colors.warningBackground,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 166, 27, 0.2)',
+  },
+  smallIconCircleCompleted: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.completedIconBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  smallIconCircleToCollect: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.warningLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  bigNumberSmall: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: colors.text,
+    lineHeight: 48,
+  },
+  halfCardBottom: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    marginTop: 4,
+  },
+  englishLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textOpacity(0.4),
+    textTransform: 'uppercase',
+  },
+  englishLabelToCollect: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.warning,
+    textTransform: 'uppercase',
+  },
+  urduLabelRight: {
+    fontFamily: URDU_FONT_BOLD,
+    fontSize: 16,
+    color: colors.textOpacity(0.5),
+    includeFontPadding: false,
+    paddingVertical: 2,
+  },
+  urduLabelRightToCollect: {
+    fontFamily: URDU_FONT_BOLD,
+    fontSize: 16,
+    color: colors.warning,
+    includeFontPadding: false,
+    paddingVertical: 2,
+  },
+  // New Booking Button
+  newBookingBtn: {
     backgroundColor: colors.primary,
-    paddingVertical: 18,
+    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 10,
     ...Platform.select({
-      ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
-      android: { elevation: 8 },
+      ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+      android: { elevation: 2 },
     }),
   },
-  fabIcon: {
-    marginRight: 8,
+  newBookingIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  fabText: {
+  newBookingTextEng: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  newBookingTextUrdu: {
     color: colors.white,
     fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+    fontFamily: URDU_FONT_BOLD,
+    includeFontPadding: false,
+    paddingVertical: 4,
   },
 });
