@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, Platform, KeyboardAvoidingView, ActivityIndicator, Keyboard, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert, Platform, KeyboardAvoidingView, ActivityIndicator, Keyboard, Pressable, BackHandler } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import TailorNumPad from '../components/TailorNumPad';
@@ -65,6 +65,24 @@ export default function MeasurementScreen({ route, navigation }: any) {
       hideSub.remove();
     };
   }, []);
+
+  useEffect(() => {
+    const backAction = () => {
+      if (isNumPadVisible) {
+        setIsNumPadVisible(false);
+        setActiveField(null);
+        return true; // prevent default back navigation
+      }
+      return false; // let default behavior happen
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [isNumPadVisible]);
 
   useEffect(() => {
     if (activeField && isNumPadVisible) {

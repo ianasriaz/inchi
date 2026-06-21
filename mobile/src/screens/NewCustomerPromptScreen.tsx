@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,11 +80,15 @@ export default function NewCustomerPromptScreen({ route, navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.content}>
+        <ScrollView 
+          style={styles.content} 
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.iconContainer}>
             <Ionicons name="person-add" size={40} color={COLORS.text} />
           </View>
-          <Text style={[styles.title, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 32, includeFontPadding: false, marginTop: -8, marginBottom: 32 }]}>
+          <Text style={[styles.title, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 24, includeFontPadding: false, marginTop: -4, marginBottom: 28 }]}>
             گاہک کی تفصیل
           </Text>
 
@@ -119,7 +123,7 @@ export default function NewCustomerPromptScreen({ route, navigation }: Props) {
               />
             </View>
           </View>
-        </View>
+        </ScrollView>
 
         <View style={styles.footer}>
           <TouchableOpacity 

@@ -98,19 +98,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   grid: {
-    gap: 10,
+    gap: 6,
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 8,
   },
   row: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 6,
   },
   key: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
@@ -124,12 +124,12 @@ const styles = StyleSheet.create({
   },
   keyText: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
   },
   actionKeyText: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
   },
 });
