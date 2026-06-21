@@ -5,6 +5,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
+import Toast from 'react-native-toast-message';
+import Skeleton from '../components/Skeleton';
+import EmptyState from '../components/EmptyState';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { generateCustomerHtml } from '../utils/invoiceGenerator';
+import { colors } from '../theme/colors';
+
 
 type OrderRow = {
   id: string;
@@ -24,9 +32,9 @@ type OrderRow = {
 };
 
 const COLORS = {
-  background: '#F7F8FA',
-  text: '#161d26',
-  accent: '#00e482',
+  background: colors.surface,
+  text: colors.text,
+  accent: colors.primary,
 };
 
 const URDU_FONT = 'NotoNastaliqUrdu';
@@ -37,6 +45,7 @@ export default function OrdersScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const [activeFilter, setActiveFilter] = useState<'stitching' | 'ready' | 'delivered'>('stitching');
 
@@ -67,10 +76,12 @@ export default function OrdersScreen() {
 
     if (error) {
       console.error('Failed to fetch orders:', error);
+      setIsInitialLoading(false);
       return;
     }
 
     setOrders((data as OrderRow[]) ?? []);
+    setIsInitialLoading(false);
   }, []);
 
   useFocusEffect(
@@ -103,6 +114,35 @@ export default function OrdersScreen() {
       await Linking.openURL(url);
     } catch (error) {
       console.error('Failed to open WhatsApp:', error);
+    }
+  };
+
+  const handleShareInvoice = async (order: OrderRow) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: shopData } = await supabase.from('shops').select('name, phone, address, logo_url').eq('id', user.id).single();
+      const bookingDate = new Date(order.created_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
+      const pickupDate = order.style_options?.pickupDate || 'Not specified';
+      const html = generateCustomerHtml(
+        shopData,
+        order.order_number,
+        order.customers?.name || 'Unknown Customer',
+        order.customers?.phone || '',
+        bookingDate,
+        pickupDate,
+        order.garment_type,
+        order.measurements || {},
+        order.style_options || {},
+        order.style_options?.notes || '',
+        order.total_amount || 0,
+        order.advance_amount || 0,
+        order.balance_amount || 0
+      );
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to generate invoice.');
     }
   };
 
@@ -145,6 +185,11 @@ export default function OrdersScreen() {
               Alert.alert('Error', error.message);
             } else {
               setOrders(orders.map(o => o.id === order.id ? { ...o, status: 'delivered', balance_amount: 0, advance_amount: order.total_amount } : o));
+              Toast.show({
+                type: 'success',
+                text1: 'Order Delivered',
+                text2: 'Balance collected successfully.',
+              });
             }
           }
         }
@@ -176,11 +221,11 @@ export default function OrdersScreen() {
             >
               {customerName}
             </Text>
-            <Text style={{ fontSize: 14, color: 'rgba(22, 29, 38, 0.5)', fontWeight: '700' }}>
+            <Text style={{ fontSize: 14, color: colors.textOpacity(0.5), fontWeight: '700' }}>
               {item.garment_type}
             </Text>
             <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 13, color: 'rgba(22, 29, 38, 0.5)', fontWeight: '600' }}>
+              <Text style={{ fontSize: 13, color: colors.textOpacity(0.5), fontWeight: '600' }}>
                 Booked: {createdDate}
               </Text>
               <View style={styles.dateDot} />
@@ -191,9 +236,9 @@ export default function OrdersScreen() {
           </View>
           
           <View style={[styles.statusPill, isDelivered ? styles.statusDelivered : isReady ? styles.statusReady : styles.statusPending]}>
-            <Ionicons name={isDelivered ? "checkmark-done" : isReady ? "checkmark-circle" : "cut"} size={14} color={isDelivered ? 'rgba(22, 29, 38, 0.4)' : isReady ? '#00C870' : '#161D26'} style={{ marginRight: 4 }} />
+            <Ionicons name={isDelivered ? "checkmark-done" : isReady ? "checkmark-circle" : "cut"} size={14} color={isDelivered ? colors.textOpacity(0.4) : isReady ? '#00C870' : colors.text} style={{ marginRight: 6 }} />
             <Text style={[styles.statusPillText, isDelivered ? styles.statusDeliveredText : isReady ? styles.statusReadyText : styles.statusPendingText]}>
-              {isDelivered ? 'Delivered' : isReady ? 'Ready' : 'Stitching'}
+              {isDelivered ? 'وصول کر لیے' : isReady ? 'سلائی مکمل ہے' : 'سلائی جاری ہے'}
             </Text>
           </View>
         </View>
@@ -201,7 +246,7 @@ export default function OrdersScreen() {
         <View style={styles.divider} />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Text style={{ fontSize: 12, color: 'rgba(22, 29, 38, 0.5)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>Balance Due</Text>
+          <Text style={{ fontSize: 12, color: colors.textOpacity(0.5), fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>Balance Due</Text>
           <Text style={{ fontSize: 20, fontWeight: '900', color: COLORS.text }}>Rs. {item.balance_amount ?? 0}</Text>
         </View>
         
@@ -209,21 +254,25 @@ export default function OrdersScreen() {
           <Pressable style={styles.actionBtnSecondary} onPress={() => handleWhatsAppPickup(item)}>
             <Ionicons name="logo-whatsapp" size={24} color="#00C870" />
           </Pressable>
+
+          <Pressable style={styles.actionBtnSecondary} onPress={() => handleShareInvoice(item)}>
+            <Ionicons name="document-text-outline" size={24} color={COLORS.text} />
+          </Pressable>
           
           {!isReady && !isDelivered ? (
             <Pressable style={[styles.actionBtnPrimary, { flex: 1, justifyContent: 'center' }]} onPress={() => handleMarkReady(item.id)}>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
-              <Text style={[styles.actionBtnPrimaryText, { marginLeft: 6 }]}>Mark Done</Text>
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
+              <Text style={[styles.actionBtnPrimaryText, { fontSize: 12, marginLeft: 8, fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', includeFontPadding: false, lineHeight: 28, marginTop: Platform.OS === 'ios' ? -4 : -6 }]}>سلائی مکمل</Text>
             </Pressable>
           ) : isReady && !isDelivered ? (
-            <Pressable style={[styles.actionBtnPrimary, { flex: 1, backgroundColor: '#E8FDF3', justifyContent: 'center' }]} onPress={() => handleDeliverOrder(item)}>
-              <Ionicons name="bag-check-outline" size={20} color="#00C870" />
-              <Text style={[styles.actionBtnPrimaryText, { color: '#00C870', marginLeft: 6 }]}>Deliver Now</Text>
+            <Pressable style={[styles.actionBtnPrimary, { flex: 1, backgroundColor: colors.primary, justifyContent: 'center' }]} onPress={() => handleDeliverOrder(item)}>
+              <Ionicons name="bag-check-outline" size={20} color={colors.text} />
+              <Text style={[styles.actionBtnPrimaryText, { fontSize: 12, marginLeft: 8, color: colors.text, fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', includeFontPadding: false, lineHeight: 28, marginTop: Platform.OS === 'ios' ? -4 : -6 }]}>وصول کر لیا گیا</Text>
             </Pressable>
           ) : (
-            <View style={[styles.actionBtnPrimary, { flex: 1, backgroundColor: '#F0F0F0', justifyContent: 'center' }]}>
-              <Ionicons name="checkmark-done" size={20} color="rgba(22, 29, 38, 0.4)" />
-              <Text style={[styles.actionBtnPrimaryText, { color: 'rgba(22, 29, 38, 0.4)', marginLeft: 6 }]}>Delivered</Text>
+            <View style={[styles.actionBtnPrimary, { flex: 1, backgroundColor: colors.border, justifyContent: 'center' }]}>
+              <Ionicons name="checkmark-done" size={20} color={colors.textOpacity(0.4)} />
+              <Text style={[styles.actionBtnPrimaryText, { color: colors.textOpacity(0.4), marginLeft: 6 }]}>Delivered</Text>
             </View>
           )}
         </View>
@@ -247,7 +296,7 @@ export default function OrdersScreen() {
                 <Text style={styles.modalSubtitle}>{selectedOrder.customers?.name}</Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.closeButton}>
-                <Ionicons name="close" size={24} color="#161D26" />
+                <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -290,6 +339,39 @@ export default function OrdersScreen() {
     );
   };
 
+  const renderEmptyState = () => {
+    if (isInitialLoading) {
+      return (
+        <View style={{ gap: 16, marginTop: 24, paddingHorizontal: 4 }}>
+          <Skeleton style={{ height: 180, borderRadius: 24 }} />
+          <Skeleton style={{ height: 180, borderRadius: 24 }} />
+          <Skeleton style={{ height: 180, borderRadius: 24 }} />
+        </View>
+      );
+    }
+    
+    let title = "No Orders";
+    let subtitle = "You don't have any orders here right now.";
+    if (activeFilter === 'stitching') {
+      title = "No Active Orders";
+      subtitle = "All caught up! Time to take some new bookings.";
+    } else if (activeFilter === 'ready') {
+      title = "No Ready Orders";
+      subtitle = "No completed orders waiting for pickup.";
+    } else if (activeFilter === 'delivered') {
+      title = "No Deliveries";
+      subtitle = "You haven't delivered any orders yet.";
+    }
+
+    return (
+      <EmptyState
+        icon="shirt-outline"
+        title={title}
+        subtitle={searchQuery ? "Try adjusting your search terms." : subtitle}
+      />
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'top']}>
       <View style={styles.screen}>
@@ -309,29 +391,24 @@ export default function OrdersScreen() {
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search by Order # or Customer Name..."
-                placeholderTextColor="rgba(22, 29, 38, 0.5)"
+                placeholderTextColor={colors.textOpacity(0.5)}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ gap: 6, paddingHorizontal: 16, paddingBottom: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, paddingBottom: 8 }}>
                 <Pressable style={[styles.filterChip, activeFilter === 'stitching' && styles.filterChipActive]} onPress={() => setActiveFilter('stitching')}>
-                  <Text style={[styles.filterChipText, activeFilter === 'stitching' && styles.filterChipTextActive]}>Stitching</Text>
+                  <Text style={[styles.filterChipText, activeFilter === 'stitching' && styles.filterChipTextActive]} numberOfLines={1} adjustsFontSizeToFit>سلائی جاری ہے</Text>
                 </Pressable>
                 <Pressable style={[styles.filterChip, activeFilter === 'ready' && styles.filterChipActive]} onPress={() => setActiveFilter('ready')}>
-                  <Text style={[styles.filterChipText, activeFilter === 'ready' && styles.filterChipTextActive]}>Ready</Text>
+                  <Text style={[styles.filterChipText, activeFilter === 'ready' && styles.filterChipTextActive]} numberOfLines={1} adjustsFontSizeToFit>سلائی مکمل ہے</Text>
                 </Pressable>
                 <Pressable style={[styles.filterChip, activeFilter === 'delivered' && styles.filterChipActive]} onPress={() => setActiveFilter('delivered')}>
-                  <Text style={[styles.filterChipText, activeFilter === 'delivered' && styles.filterChipTextActive]}>Delivered</Text>
+                  <Text style={[styles.filterChipText, activeFilter === 'delivered' && styles.filterChipTextActive]} numberOfLines={1} adjustsFontSizeToFit>وصول کر لیے</Text>
                 </Pressable>
-              </ScrollView>
+              </View>
             </View>
           }
-          ListEmptyComponent={
-            <View style={styles.emptyOrdersBlock}>
-              <Text style={styles.emptyStateTitle}>No bookings yet</Text>
-              <Text style={styles.emptyStateSubtitle}>Go to the Dashboard to create a new booking.</Text>
-            </View>
-          }
+          ListEmptyComponent={renderEmptyState}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
         {renderDetailsModal()}
@@ -341,20 +418,20 @@ export default function OrdersScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F7F8FA' },
-  screen: { flex: 1, backgroundColor: '#F7F8FA' },
-  container: { backgroundColor: '#F7F8FA', paddingHorizontal: 16, flexGrow: 1, gap: 12 },
+  safeArea: { flex: 1, backgroundColor: colors.surface },
+  screen: { flex: 1, backgroundColor: colors.surface },
+  container: { backgroundColor: colors.surface, paddingHorizontal: 16, flexGrow: 1, gap: 12 },
   content: { gap: 18, marginBottom: 6 },
   headerContainer: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
   headerTitle: { color: COLORS.text, fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
-  headerSubtitle: { fontFamily: URDU_FONT, color: 'rgba(22, 29, 38, 0.5)', fontSize: 22, fontWeight: '400', lineHeight: 34, paddingTop: 6 },
-  searchInput: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: COLORS.text, borderWidth: 1, borderColor: '#F0F0F0' },
-  emptyOrdersBlock: { borderRadius: 24, padding: 24, backgroundColor: '#FFFFFF', alignItems: 'center' },
+  headerSubtitle: { fontFamily: URDU_FONT, color: colors.textOpacity(0.5), fontSize: 22, fontWeight: '400', lineHeight: 34, paddingTop: 6 },
+  searchInput: { backgroundColor: colors.white, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: COLORS.text, borderWidth: 1, borderColor: colors.border },
+  emptyOrdersBlock: { borderRadius: 24, padding: 24, backgroundColor: colors.white, alignItems: 'center' },
   emptyStateTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700', marginBottom: 6 },
   emptyStateSubtitle: { color: 'rgba(22, 29, 38, 0.72)', fontSize: 14, lineHeight: 20, textAlign: 'center' },
   separator: { height: 12 },
   orderCard: { 
-    backgroundColor: '#FFFFFF', 
+    backgroundColor: colors.white, 
     borderRadius: 20, 
     padding: 16, 
     ...Platform.select({
@@ -367,56 +444,56 @@ const styles = StyleSheet.create({
   orderCustomerName: { color: COLORS.text, fontSize: 18, fontWeight: '800', lineHeight: 24, marginBottom: 4 },
   orderMeta: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   datesRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 },
-  dateText: { color: 'rgba(22, 29, 38, 0.6)', fontSize: 13, fontWeight: '600' },
-  dateDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(22, 29, 38, 0.3)' },
+  dateText: { color: colors.textOpacity(0.6), fontSize: 13, fontWeight: '600' },
+  dateDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textOpacity(0.3) },
   dateTextHighlight: { color: COLORS.accent, fontSize: 13, fontWeight: '900' },
   
-  statusPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#E2E8F0' },
-  filterChipActive: { backgroundColor: '#161D26', borderColor: '#161D26' },
-  filterChipText: { fontSize: 13, fontWeight: '700', color: 'rgba(22, 29, 38, 0.6)' },
-  filterChipTextActive: { color: '#FFFFFF' },
-  statusPending: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#161D26' },
-  statusPendingText: { color: '#161D26' },
-  statusReady: { backgroundColor: '#E8FDF3' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, height: 32, borderRadius: 16 },
+  filterChip: { flex: 1, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 16, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 4 },
+  filterChipActive: { backgroundColor: colors.text, borderColor: colors.text },
+  filterChipText: { fontSize: 10, fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', color: colors.textOpacity(0.6), includeFontPadding: false, lineHeight: 28, marginTop: Platform.OS === 'ios' ? -4 : -6 },
+  filterChipTextActive: { color: colors.white },
+  statusPending: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.text },
+  statusPendingText: { color: colors.text },
+  statusReady: { backgroundColor: colors.primaryLight },
   statusReadyText: { color: '#00C870' },
-  statusDelivered: { backgroundColor: '#F0F0F0' },
-  statusDeliveredText: { color: 'rgba(22, 29, 38, 0.6)' },
-  statusPillText: { fontSize: 12, fontWeight: '800', textTransform: 'capitalize' },
+  statusDelivered: { backgroundColor: colors.border },
+  statusDeliveredText: { color: colors.textOpacity(0.6) },
+  statusPillText: { fontSize: 11, fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', includeFontPadding: false, lineHeight: 24, marginTop: Platform.OS === 'ios' ? -3 : -5 },
 
-  contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F7F8FA', borderRadius: 12, padding: 10, marginBottom: 12 },
+  contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 12, padding: 10, marginBottom: 12 },
   contactInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   orderCustomerMeta: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
-  whatsappButtonSmall: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8FDF3', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  whatsappButtonSmall: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primaryLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   whatsappButtonTextSmall: { color: '#00C870', fontSize: 13, fontWeight: '800' },
 
-  divider: { height: 1, backgroundColor: '#F0F0F0', marginBottom: 12 },
+  divider: { height: 1, backgroundColor: colors.border, marginBottom: 12 },
 
   orderDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   balanceBlock: { gap: 4 },
-  balanceLabel: { color: 'rgba(22, 29, 38, 0.5)', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  balanceLabel: { color: colors.textOpacity(0.5), fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   balanceValue: { color: COLORS.text, fontSize: 20, fontWeight: '900' },
   
-  actionBtnPrimary: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, backgroundColor: '#161D26', paddingVertical: 10, paddingHorizontal: 16 },
-  actionBtnPrimaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  actionBtnSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 16, backgroundColor: '#E8FDF3' },
+  actionBtnPrimary: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, backgroundColor: colors.text, paddingVertical: 10, paddingHorizontal: 16 },
+  actionBtnPrimaryText: { color: colors.white, fontSize: 14, fontWeight: '800' },
+  actionBtnSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 16, backgroundColor: colors.primaryLight },
 
   // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(22, 29, 38, 0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '80%', paddingHorizontal: 24, paddingVertical: 32 },
+  modalOverlay: { flex: 1, backgroundColor: colors.textOpacity(0.6), justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: colors.white, borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '80%', paddingHorizontal: 24, paddingVertical: 32 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  modalTitle: { fontSize: 24, fontWeight: '900', color: '#161D26', marginBottom: 4 },
-  modalSubtitle: { fontSize: 16, fontWeight: '600', color: 'rgba(22, 29, 38, 0.6)' },
-  closeButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F7F8FA', alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { fontSize: 24, fontWeight: '900', color: colors.text, marginBottom: 4 },
+  modalSubtitle: { fontSize: 16, fontWeight: '600', color: colors.textOpacity(0.6) },
+  closeButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   modalScroll: { paddingBottom: 40 },
   sectionBlock: { marginBottom: 32 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#161D26', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16, borderBottomWidth: 2, borderBottomColor: '#F0F0F0', paddingBottom: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: colors.text, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16, borderBottomWidth: 2, borderBottomColor: colors.border, paddingBottom: 8 },
   measureGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  measureItem: { width: '48%', backgroundColor: '#F7F8FA', padding: 16, borderRadius: 16, alignItems: 'center' },
-  measureKey: { fontSize: 12, fontWeight: '700', color: 'rgba(22, 29, 38, 0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  measureVal: { fontSize: 20, fontWeight: '900', color: '#161D26' },
+  measureItem: { width: '48%', backgroundColor: colors.surface, padding: 16, borderRadius: 16, alignItems: 'center' },
+  measureKey: { fontSize: 12, fontWeight: '700', color: colors.textOpacity(0.5), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  measureVal: { fontSize: 20, fontWeight: '900', color: colors.text },
   styleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  styleItem: { width: '48%', backgroundColor: '#F7F8FA', padding: 16, borderRadius: 16 },
+  styleItem: { width: '48%', backgroundColor: colors.surface, padding: 16, borderRadius: 16 },
   notesBlock: { marginTop: 12, backgroundColor: '#FFF4E5', padding: 16, borderRadius: 16 },
-  notesVal: { fontSize: 16, fontWeight: '700', color: '#161D26', marginTop: 4 },
+  notesVal: { fontSize: 16, fontWeight: '700', color: colors.text, marginTop: 4 },
 });

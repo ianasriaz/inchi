@@ -2,11 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, TextInput, ScrollView, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { Picker } from '@react-native-picker/picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import Toast from 'react-native-toast-message';
+import { colors } from '../theme/colors';
+
 
 // Top 20 Cities in Pakistan for B2C Directory optimization
 const PAKISTAN_CITIES = [
@@ -17,6 +21,8 @@ const PAKISTAN_CITIES = [
 ];
 
 export default function SettingsScreen() {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [userId, setUserId] = useState<string | null>(null);
   const [shopName, setShopName] = useState('');
   const [phone, setPhone] = useState('');
@@ -74,9 +80,9 @@ export default function SettingsScreen() {
     setIsSaving(false);
 
     if (error) {
-      Alert.alert('Error', 'Failed to update profile.');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to update profile.' });
     } else {
-      Alert.alert('Success', 'Shop profile updated successfully!');
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Shop profile updated successfully!' });
     }
   };
 
@@ -139,10 +145,10 @@ export default function SettingsScreen() {
       if (updateError) throw updateError;
 
       setLogoUrl(publicURL);
-      Alert.alert('Success', 'Logo uploaded successfully!');
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Logo uploaded successfully!' });
     } catch (error) {
       console.error('Upload Error: ', error);
-      Alert.alert('Upload Failed', 'There was an issue uploading your logo.');
+      Toast.show({ type: 'error', text1: 'Upload Failed', text2: 'There was an issue uploading your logo.' });
     } finally {
       setIsUploading(false);
     }
@@ -164,29 +170,34 @@ export default function SettingsScreen() {
   if (isLoading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#00e482" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'top']}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerContainer}>
+      <View style={[styles.header, { paddingTop: 12 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <View>
           <Text style={styles.headerTitle}>Shop Profile</Text>
-          <Text style={styles.headerSubtitle}>پروفائل</Text>
         </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
         {/* Logo Section */}
         <View style={styles.logoSection}>
           <TouchableOpacity style={styles.logoContainer} onPress={handlePickLogo} disabled={isUploading}>
             {isUploading ? (
-              <ActivityIndicator color="#00e482" />
+              <ActivityIndicator color={colors.primary} />
             ) : logoUrl ? (
               <Image source={{ uri: logoUrl }} style={styles.logoImage} />
             ) : (
               <View style={styles.logoPlaceholder}>
-                <Ionicons name="camera-outline" size={32} color="#00e482" />
+                <Ionicons name="camera-outline" size={32} color={colors.primary} />
                 <Text style={styles.logoPlaceholderText}>Upload Logo</Text>
               </View>
             )}
@@ -229,9 +240,10 @@ export default function SettingsScreen() {
               selectedValue={city}
               onValueChange={(itemValue) => setCity(itemValue)}
               style={styles.picker}
+              mode="dropdown"
             >
               {PAKISTAN_CITIES.map((c) => (
-                <Picker.Item key={c} label={c} value={c} color="#161d26" />
+                <Picker.Item key={c} label={c} value={c} color={colors.text} />
               ))}
             </Picker>
           </View>
@@ -242,13 +254,21 @@ export default function SettingsScreen() {
           onPress={handleSaveProfile}
           disabled={isSaving}
         >
-          {isSaving ? <ActivityIndicator color="#161d26" /> : <Text style={styles.saveButtonText}>Save Profile</Text>}
+          {isSaving ? (
+            <ActivityIndicator color={colors.text} />
+          ) : (
+            <>
+              <Text style={styles.saveButtonText}>Save Profile</Text>
+              <Ionicons name="checkmark-circle" size={20} color={colors.text} style={{ marginLeft: 8 }} />
+            </>
+          )}
         </TouchableOpacity>
 
         <View style={styles.divider} />
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Sign Out / Change Key</Text>
+          <Text style={styles.logoutButtonText}>Sign Out</Text>
+          <Ionicons name="log-out-outline" size={20} color="#E53935" style={{ marginLeft: 8 }} />
         </TouchableOpacity>
         
       </ScrollView>
@@ -257,16 +277,18 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
-  container: { padding: 20, backgroundColor: '#FFFFFF', flexGrow: 1, paddingBottom: 40 },
-  headerContainer: { flexDirection: 'row', alignItems: 'baseline', gap: 12, marginBottom: 30 },
-  headerTitle: { color: '#161d26', fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
-  headerSubtitle: { fontFamily: 'NotoNastaliqUrdu', color: 'rgba(22, 29, 38, 0.5)', fontSize: 22, fontWeight: '400', lineHeight: 34, paddingTop: 6 },
+  safeArea: { flex: 1, backgroundColor: colors.white },
+  container: { paddingHorizontal: 20, paddingTop: 20, backgroundColor: colors.white, flexGrow: 1, paddingBottom: 40 },
+  
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(22, 29, 38, 0.05)' },
+  backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  headerTitle: { color: colors.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
+  headerSubtitle: { fontFamily: 'NotoNastaliqUrdu', color: colors.textOpacity(0.5), fontSize: 15, marginTop: -4 },
   
   logoSection: { alignItems: 'center', marginBottom: 30 },
   logoContainer: {
     width: 120, height: 120, borderRadius: 60,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     justifyContent: 'center', alignItems: 'center',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 16 },
@@ -275,41 +297,38 @@ const styles = StyleSheet.create({
   },
   logoImage: { width: 120, height: 120, borderRadius: 60, resizeMode: 'cover' },
   logoPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 4 },
-  logoPlaceholderText: { color: '#161d26', fontWeight: '800', fontSize: 13 },
-  hintText: { marginTop: 12, fontSize: 13, color: 'rgba(22, 29, 38, 0.6)', fontWeight: '600' },
+  logoPlaceholderText: { color: colors.text, fontWeight: '800', fontSize: 13 },
+  hintText: { marginTop: 12, fontSize: 13, color: colors.textOpacity(0.6), fontWeight: '600' },
 
-  formGroup: { gap: 16, marginBottom: 40 },
-  label: { fontSize: 15, fontWeight: '800', color: '#161d26', marginLeft: 4 },
+  formGroup: { gap: 12, marginBottom: 56 },
+  label: { fontSize: 15, fontWeight: '800', color: colors.text, marginLeft: 4, marginTop: 8 },
   input: {
-    backgroundColor: '#F7F8FA',
-    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16,
-    fontSize: 16, color: '#161d26',
+    backgroundColor: colors.surface,
+    borderRadius: 16, paddingHorizontal: 16, height: 56,
+    fontSize: 16, color: colors.text,
     fontWeight: '600',
   },
-  textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: 16 },
+  textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: 16, paddingBottom: 16 },
   pickerContainer: {
-    backgroundColor: '#F7F8FA',
-    borderRadius: 16, overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderRadius: 16, overflow: 'hidden', height: 56, justifyContent: 'center'
   },
-  picker: { width: '100%', height: 55 },
+  picker: { width: '100%', height: 56 },
 
   saveButton: {
-    backgroundColor: '#00e482',
-    paddingVertical: 18, borderRadius: 24,
-    alignItems: 'center', marginBottom: 30,
-    ...Platform.select({
-      ios: { shadowColor: '#00e482', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },
-      android: { elevation: 8 },
-    }),
+    backgroundColor: colors.primary,
+    height: 60, borderRadius: 24,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 30,
   },
-  saveButtonText: { color: '#161d26', fontSize: 16, fontWeight: '800' },
+  saveButtonText: { color: colors.text, fontSize: 16, fontWeight: '800' },
 
-  divider: { height: 1, backgroundColor: 'rgba(22, 29, 38, 0.08)', marginBottom: 30 },
+  divider: { height: 1, backgroundColor: 'rgba(22, 29, 38, 0.05)', marginBottom: 30 },
 
   logoutButton: {
     backgroundColor: '#FFF5F5',
-    paddingVertical: 16, borderRadius: 20,
-    alignItems: 'center',
+    height: 60, borderRadius: 24,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
   },
   logoutButtonText: { color: '#E53935', fontSize: 15, fontWeight: '800' },
 });

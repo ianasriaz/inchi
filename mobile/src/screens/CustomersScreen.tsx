@@ -5,6 +5,10 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
+import Skeleton from '../components/Skeleton';
+import EmptyState from '../components/EmptyState';
+import { colors } from '../theme/colors';
+
 
 type CustomerRow = {
   id: number;
@@ -15,9 +19,9 @@ type CustomerRow = {
 };
 
 const COLORS = {
-  background: '#F7F8FA',
-  text: '#161d26',
-  accent: '#00e482',
+  background: colors.surface,
+  text: colors.text,
+  accent: colors.primary,
 };
 
 const URDU_FONT = 'NotoNastaliqUrdu';
@@ -27,6 +31,7 @@ export default function CustomersScreen() {
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const fetchCustomers = useCallback(async (query: string = '') => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -51,10 +56,12 @@ export default function CustomersScreen() {
 
     if (error) {
       console.error('Failed to fetch customers:', error);
+      setIsInitialLoading(false);
       return;
     }
 
     setCustomers(data || []);
+    setIsInitialLoading(false);
   }, []);
 
   useFocusEffect(
@@ -100,7 +107,7 @@ export default function CustomersScreen() {
       <TouchableOpacity style={styles.card} onPress={() => handleCustomerPress(item)} activeOpacity={0.7}>
         <View style={styles.cardRowTop}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={24} color="#161D26" />
+            <Ionicons name="person" size={24} color={colors.text} />
           </View>
           <View style={styles.textBlock}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -114,13 +121,13 @@ export default function CustomersScreen() {
               </Text>
               <Text style={styles.customerId}>#{item.customer_number}</Text>
             </View>
-            <Text style={styles.customerMeta}>Added: {createdDate}</Text>
+            <Text style={styles.customerMeta}>Customer Since: {createdDate}</Text>
           </View>
         </View>
 
         <View style={styles.contactRow}>
           <View style={styles.contactInfo}>
-            <Ionicons name="call-outline" size={16} color="rgba(22, 29, 38, 0.5)" />
+            <Ionicons name="call-outline" size={16} color={colors.textOpacity(0.5)} />
             <Text style={styles.customerPhone}>{item.phone || 'No phone'}</Text>
           </View>
           <Pressable style={styles.whatsappButtonSmall} onPress={() => handleWhatsApp(item.phone)}>
@@ -129,6 +136,25 @@ export default function CustomersScreen() {
           </Pressable>
         </View>
       </TouchableOpacity>
+    );
+  };
+
+  const renderEmptyState = () => {
+    if (isInitialLoading) {
+      return (
+        <View style={{ gap: 12, marginTop: 24 }}>
+          <Skeleton style={{ height: 100, borderRadius: 24 }} />
+          <Skeleton style={{ height: 100, borderRadius: 24 }} />
+          <Skeleton style={{ height: 100, borderRadius: 24 }} />
+        </View>
+      );
+    }
+    return (
+      <EmptyState
+        icon="people-outline"
+        title="No customers found"
+        subtitle={searchQuery ? "Try adjusting your search." : "Start booking orders to build your customer list!"}
+      />
     );
   };
 
@@ -149,7 +175,7 @@ export default function CustomersScreen() {
                 <Text style={styles.headerTitle}>Customers</Text>
               </View>
               <View style={styles.searchBar}>
-                <Ionicons name="search" size={20} color="rgba(22, 29, 38, 0.5)" />
+                <Ionicons name="search" size={20} color={colors.textOpacity(0.5)} />
                 <View style={styles.inputContainer}>
                   <TextInput
                     style={[
@@ -157,7 +183,7 @@ export default function CustomersScreen() {
                       containsUrdu(searchQuery) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 18, includeFontPadding: false }
                     ]}
                     placeholder="Search name, phone, or #..."
-                    placeholderTextColor="rgba(22, 29, 38, 0.4)"
+                    placeholderTextColor={colors.textOpacity(0.4)}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     autoCorrect={false}
@@ -165,7 +191,7 @@ export default function CustomersScreen() {
                 </View>
                 {searchQuery.length > 0 ? (
                   <Pressable onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
-                    <Ionicons name="close-circle" size={20} color="rgba(22, 29, 38, 0.3)" />
+                    <Ionicons name="close-circle" size={20} color={colors.textOpacity(0.3)} />
                   </Pressable>
                 ) : null}
               </View>
@@ -185,9 +211,9 @@ export default function CustomersScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F7F8FA' },
-  screen: { flex: 1, backgroundColor: '#F7F8FA' },
-  container: { backgroundColor: '#F7F8FA', paddingHorizontal: 16, flexGrow: 1, gap: 12 },
+  safeArea: { flex: 1, backgroundColor: colors.surface },
+  screen: { flex: 1, backgroundColor: colors.surface },
+  container: { backgroundColor: colors.surface, paddingHorizontal: 16, flexGrow: 1, gap: 12 },
   content: { gap: 18, marginBottom: 6 },
   headerContainer: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
   headerTitle: { color: COLORS.text, fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
@@ -196,7 +222,7 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
@@ -213,12 +239,12 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
 
-  emptyBlock: { borderRadius: 24, padding: 24, backgroundColor: '#FFFFFF', alignItems: 'center', marginTop: 24 },
+  emptyBlock: { borderRadius: 24, padding: 24, backgroundColor: colors.white, alignItems: 'center', marginTop: 24 },
   emptyStateTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700', marginBottom: 6 },
   emptyStateSubtitle: { color: 'rgba(22, 29, 38, 0.72)', fontSize: 14, lineHeight: 20, textAlign: 'center' },
   separator: { height: 12 },
   card: { 
-    backgroundColor: '#FFFFFF', 
+    backgroundColor: colors.white, 
     borderRadius: 20, 
     padding: 16, 
     ...Platform.select({
@@ -227,15 +253,15 @@ const styles = StyleSheet.create({
     }),
   },
   cardRowTop: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12 },
-  avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: COLORS.accent, borderColor: '#161D26', borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: COLORS.accent, borderColor: colors.text, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   textBlock: { flex: 1, gap: 2 },
   customerName: { color: COLORS.text, fontSize: 18, fontWeight: '800', lineHeight: 24 },
   customerId: { color: COLORS.accent, fontSize: 14, fontWeight: '900' },
-  customerMeta: { color: 'rgba(22, 29, 38, 0.5)', fontSize: 13, marginTop: 2 },
+  customerMeta: { color: colors.textOpacity(0.5), fontSize: 13, marginTop: 2 },
   
-  contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F7F8FA', borderRadius: 12, padding: 10 },
+  contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 12, padding: 10 },
   contactInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   customerPhone: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
-  whatsappButtonSmall: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8FDF3', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  whatsappButtonSmall: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primaryLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   whatsappButtonTextSmall: { color: '#00C870', fontSize: 13, fontWeight: '800' },
 });

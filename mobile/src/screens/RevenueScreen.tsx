@@ -4,11 +4,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { colors } from '../theme/colors';
+
 
 const COLORS = {
-  background: '#FFFFFF',
-  text: '#161d26',
-  accent: '#00e482',
+  background: colors.white,
+  text: colors.text,
+  accent: colors.primary,
 };
 
 export default function RevenueScreen({ navigation }: any) {
@@ -61,7 +63,7 @@ export default function RevenueScreen({ navigation }: any) {
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={28} color="#161D26" />
+          <Ionicons name="arrow-back" size={28} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitleMain}>Revenue</Text>
@@ -83,7 +85,7 @@ export default function RevenueScreen({ navigation }: any) {
           
           <View style={styles.mainCard}>
             <View style={styles.mainCardIcon}>
-              <Ionicons name="wallet" size={28} color="#00e482" />
+              <Ionicons name="wallet" size={28} color={colors.primary} />
             </View>
             <Text style={styles.mainCardLabel}>Total Sales</Text>
             <Text style={styles.mainCardValue}>Rs. {stats.totalSales.toLocaleString()}</Text>
@@ -91,7 +93,7 @@ export default function RevenueScreen({ navigation }: any) {
 
           <View style={styles.grid}>
             <View style={styles.gridCard}>
-              <View style={[styles.gridIcon, { backgroundColor: '#E8FDF3' }]}>
+              <View style={[styles.gridIcon, { backgroundColor: colors.primaryLight }]}>
                 <Ionicons name="arrow-down" size={20} color="#00C870" />
               </View>
               <Text style={styles.gridLabel}>Collected</Text>
@@ -110,7 +112,7 @@ export default function RevenueScreen({ navigation }: any) {
           <View style={styles.ordersCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={styles.ordersIcon}>
-                <Ionicons name="documents-outline" size={24} color="#161D26" />
+                <Ionicons name="documents-outline" size={24} color={colors.text} />
               </View>
               <Text style={styles.ordersLabel}>Total Bookings Processed</Text>
             </View>
@@ -132,32 +134,32 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 12 },
   backButton: { padding: 4, marginLeft: -4 },
   headerTitleContainer: { flex: 1, alignItems: 'center' },
-  headerTitleMain: { fontSize: 20, fontWeight: '800', color: '#161D26' },
+  headerTitleMain: { fontSize: 20, fontWeight: '800', color: colors.text },
 
-  sectionHeader: { fontSize: 14, fontWeight: '800', color: 'rgba(22, 29, 38, 0.4)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  sectionHeader: { fontSize: 14, fontWeight: '800', color: colors.textOpacity(0.4), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
 
   mainCard: { 
-    backgroundColor: '#00e482', 
+    backgroundColor: colors.primary, 
     borderRadius: 24, 
     padding: 24, 
     alignItems: 'center',
     ...Platform.select({
-      ios: { shadowColor: '#00e482', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },
+      ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },
       android: { elevation: 6 },
     }),
   },
-  mainCardIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  mainCardLabel: { color: 'rgba(22, 29, 38, 0.7)', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 },
-  mainCardValue: { color: '#161D26', fontSize: 40, fontWeight: '900', letterSpacing: -1 },
+  mainCardIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.white, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  mainCardLabel: { color: colors.textOpacity(0.7), fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 },
+  mainCardValue: { color: colors.text, fontSize: 40, fontWeight: '900', letterSpacing: -1 },
 
   grid: { flexDirection: 'row', gap: 16 },
-  gridCard: { flex: 1, backgroundColor: '#F7F8FA', borderRadius: 20, padding: 20 },
+  gridCard: { flex: 1, backgroundColor: colors.surface, borderRadius: 20, padding: 20 },
   gridIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  gridLabel: { color: 'rgba(22, 29, 38, 0.5)', fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  gridLabel: { color: colors.textOpacity(0.5), fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   gridValue: { color: COLORS.text, fontSize: 22, fontWeight: '900' },
 
-  ordersCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F7F8FA', borderRadius: 20, padding: 20, marginTop: 8 },
-  ordersIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center' },
+  ordersCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 20, padding: 20, marginTop: 8 },
+  ordersIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.white, justifyContent: 'center', alignItems: 'center' },
   ordersLabel: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   ordersValue: { color: COLORS.text, fontSize: 24, fontWeight: '900' },
 });

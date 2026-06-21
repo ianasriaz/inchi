@@ -2,29 +2,32 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import TailorNumPad from '../components/TailorNumPad';
 import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
 import type { RootStackParamList } from '../../App';
+import { colors } from '../theme/colors';
+
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomerProfile'>;
 
 const COLORS = {
-  background: '#FFFFFF',
-  text: '#161d26',
-  accent: '#00e482',
+  background: colors.white,
+  text: colors.text,
+  accent: colors.primary,
 };
 
 const MEASUREMENT_FIELDS = [
-  { id: 'length', label: 'Length', urdu: 'لمبائی', icon: 'resize' },
-  { id: 'chest', label: 'Chest', urdu: 'چھاتی', icon: 'shirt-outline' },
-  { id: 'waist', label: 'Waist', urdu: 'کمر', icon: 'body-outline' },
-  { id: 'hips', label: 'Hips', urdu: 'ہپس', icon: 'expand-outline' },
+  { id: 'length', label: 'Length', urdu: 'لمبائی', icon: 'arrow-down-outline' },
   { id: 'shoulder', label: 'Shoulder', urdu: 'تیرا', icon: 'git-commit-outline' },
   { id: 'sleeve', label: 'Sleeve', urdu: 'بازو', icon: 'hand-right-outline' },
-  { id: 'collar', label: 'Collar', urdu: 'کالر', icon: 'ribbon-outline' },
-  { id: 'shalwarLength', label: 'Shalwar', urdu: 'شلوار لمبائی', icon: 'arrow-down-outline' },
-  { id: 'pancha', label: 'Pancha', urdu: 'پانچہ', icon: 'code-outline' },
+  { id: 'chest', label: 'Chest', urdu: 'چھاتی', icon: 'shirt-outline' },
+  { id: 'waist', label: 'Waist', urdu: 'کمر', icon: 'disc-outline' },
+  { id: 'neck', label: 'Neck', urdu: 'گلا', icon: 'person-circle-outline' },
+  { id: 'shalwar', label: 'Shalwar', urdu: 'شلوار', icon: 'arrow-down-circle-outline' },
+  { id: 'paincha', label: 'Paincha', urdu: 'پانچا', icon: 'footsteps-outline' },
 ];
 
 export default function CustomerProfileScreen({ route, navigation }: Props) {
@@ -40,6 +43,9 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
   
   const [measurements, setMeasurements] = useState<Record<string, string>>({});
   const [garmentType, setGarmentType] = useState('Kameez Shalwar');
+
+  const [activeField, setActiveField] = useState<string | null>(null);
+  const [isNumPadVisible, setIsNumPadVisible] = useState(false);
 
   useEffect(() => {
     fetchCustomerDetails();
@@ -60,22 +66,24 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
       setPhone(customerData.phone || '');
       setCustomerNumber(customerData.customer_number);
 
-      // If they have default measurements, use them. Otherwise, see if they have past orders.
-      if (customerData.default_measurements && Object.keys(customerData.default_measurements).length > 0) {
-        setMeasurements(customerData.default_measurements);
-        setGarmentType(customerData.default_garment_type || 'Kameez Shalwar');
+      const defaultGarment = customerData.default_garment_type || 'Kameez Shalwar';
+      setGarmentType(defaultGarment);
+
+      // If they have default measurements for this garment, use them. Otherwise, see if they have past orders.
+      if (customerData.default_measurements && customerData.default_measurements[defaultGarment]) {
+        setMeasurements(customerData.default_measurements[defaultGarment]);
       } else {
         const { data: orderData } = await supabase
           .from('orders')
           .select('measurements, garment_type')
           .eq('customer_id', customerId)
+          .eq('garment_type', defaultGarment)
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
 
         if (orderData) {
           setMeasurements(orderData.measurements || {});
-          setGarmentType(orderData.garment_type || 'Kameez Shalwar');
         }
       }
     } catch (error) {
@@ -86,26 +94,65 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
     }
   };
 
-  const handleMeasurementChange = (id: string, value: string) => {
-    setMeasurements((prev) => ({ ...prev, [id]: value }));
+  const handleKeyPress = (val: string) => {
+    if (!activeField) return;
+    
+    if (val === '⌫') {
+      setMeasurements(prev => ({
+        ...prev,
+        [activeField]: (prev[activeField] || '').slice(0, -1)
+      }));
+    } else if (val === 'NEXT') {
+      const idx = MEASUREMENT_FIELDS.findIndex(f => f.id === activeField);
+      if (idx < MEASUREMENT_FIELDS.length - 1) {
+        setActiveField(MEASUREMENT_FIELDS[idx + 1].id);
+      } else {
+        closeNumPad();
+      }
+    } else if (/^[\d.]$/.test(val) || ['¼', '½', '¾'].includes(val)) {
+      setMeasurements(prev => ({
+        ...prev,
+        [activeField]: (prev[activeField] || '') + val
+      }));
+    }
+  };
+
+  const openNumPad = (fieldId: string) => {
+    setActiveField(fieldId);
+    setIsNumPadVisible(true);
+  };
+
+  const closeNumPad = () => {
+    setActiveField(null);
+    setIsNumPadVisible(false);
   };
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
     try {
+      const { data: existing } = await supabase.from('customers').select('default_measurements').eq('id', customerId).single();
+      const existingDefaults = existing?.default_measurements || {};
+
       const { error } = await supabase
         .from('customers')
         .update({
           name: name.trim(),
           phone: phone.trim() || null,
-          default_measurements: measurements,
+          default_measurements: {
+            ...existingDefaults,
+            [garmentType]: measurements
+          },
           default_garment_type: garmentType,
         })
         .eq('id', customerId);
 
       if (error) throw error;
       
-      Alert.alert('Success', 'Profile saved successfully!');
+      Toast.show({
+        type: 'success',
+        text1: 'Profile Saved',
+        text2: 'Customer profile has been successfully updated.',
+      });
       navigation.goBack();
     } catch (error) {
       console.error('Failed to save profile:', error);
@@ -146,19 +193,34 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Customer Profile</Text>
-            <Text style={styles.headerSubtitle}>گاہک کی تفصیلات</Text>
           </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           
-          {/* PROFILE CARD */}
           <View style={styles.profileCard}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={32} color="#161D26" />
+            <View style={{ flex: 1, paddingRight: 16 }}>
+              <Text style={{ color: colors.textOpacity(0.4), fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>
+                Customer Profile
+              </Text>
+              <Text 
+                style={[
+                  { color: colors.text, fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+                  containsUrdu(name) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 20, lineHeight: 32, paddingTop: 4, textAlign: 'left' }
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {name}
+              </Text>
+              <Text style={{ color: colors.textOpacity(0.6), fontSize: 15, fontWeight: '600', marginTop: containsUrdu(name) ? -4 : 4 }}>
+                {phone || 'No phone number'}
+              </Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.profileId}>#{customerNumber}</Text>
+            <View style={styles.idTag}>
+              <Text style={styles.idTagText} numberOfLines={1} adjustsFontSizeToFit>
+                #{customerNumber || '?'}
+              </Text>
             </View>
           </View>
 
@@ -179,7 +241,7 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
                   value={name}
                   onChangeText={setName}
                   placeholder="e.g. Ali Khan"
-                  placeholderTextColor="rgba(22, 29, 38, 0.3)"
+                  placeholderTextColor={colors.textOpacity(0.3)}
                 />
               </View>
             </View>
@@ -194,7 +256,7 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
                   value={phone}
                   onChangeText={setPhone}
                   placeholder="e.g. 0300 1234567"
-                  placeholderTextColor="rgba(22, 29, 38, 0.3)"
+                  placeholderTextColor={colors.textOpacity(0.3)}
                   keyboardType="phone-pad"
                 />
               </View>
@@ -205,58 +267,61 @@ export default function CustomerProfileScreen({ route, navigation }: Props) {
           <View style={styles.section}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
               <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Default Measurements</Text>
-              <Text style={{ fontFamily: 'NotoNastaliqUrdu', color: 'rgba(22, 29, 38, 0.5)', fontSize: 16 }}>پیمائش</Text>
+              <Text style={{ fontFamily: 'NotoNastaliqUrdu', color: colors.textOpacity(0.5), fontSize: 16 }}>پیمائش</Text>
             </View>
 
             <View style={styles.grid}>
-              {MEASUREMENT_FIELDS.map((field) => (
-                <View key={field.id} style={styles.gridItem}>
-                  <View style={styles.gridHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Ionicons name={field.icon as any} size={16} color="rgba(22, 29, 38, 0.5)" />
-                      <Text style={styles.gridLabelEnglish}>{field.label}</Text>
+              {MEASUREMENT_FIELDS.map((field) => {
+                const isActive = activeField === field.id;
+                const val = measurements[field.id] || '';
+                return (
+                  <TouchableOpacity
+                    key={field.id}
+                    style={[styles.measureInput, isActive ? styles.measureInputActive : null]}
+                    onPress={() => openNumPad(field.id)}
+                  >
+                    <View style={styles.measureLabelRow}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name={field.icon as any} size={16} color={isActive ? colors.primary : colors.textOpacity(0.4)} />
+                        <Text style={[styles.measureLabelEng, isActive ? { color: colors.text } : null]}>{field.label}</Text>
+                      </View>
+                      <Text style={[styles.measureLabelUrdu, isActive ? { color: colors.primary } : null]}>{field.urdu}</Text>
                     </View>
-                    <Text style={styles.gridLabelUrdu}>{field.urdu}</Text>
-                  </View>
-                  <View style={styles.gridInputContainer}>
-                    <TextInput
-                      style={styles.gridInput}
-                      keyboardType="numeric"
-                      placeholder="0"
-                      placeholderTextColor="rgba(22, 29, 38, 0.2)"
-                      value={measurements[field.id] || ''}
-                      onChangeText={(val) => handleMeasurementChange(field.id, val)}
-                    />
-                  </View>
-                </View>
-              ))}
+                    <Text style={[styles.measureValue, !val ? styles.measureValueEmpty : null, isActive ? styles.measureValueActive : null]}>
+                      {val || '—'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
           <View style={{ height: 120 }} />
         </ScrollView>
-
-        <View style={[styles.footer, { paddingBottom: insets.bottom || 20 }]}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={startNewBooking}>
-            <Ionicons name="add-circle" size={20} color="#161D26" style={{ marginRight: 8 }} />
-            <Text style={styles.secondaryButtonText}>New Booking</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.primaryButton, isSaving ? { opacity: 0.7 } : null]} 
-            onPress={handleSaveChanges}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator color={COLORS.text} />
-            ) : (
-              <>
-                <Text style={styles.primaryButtonText}>Save Profile</Text>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.text} style={{ marginLeft: 8 }} />
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        {isNumPadVisible ? (
+          <TailorNumPad 
+            onKeyPress={handleKeyPress} 
+            onClose={closeNumPad}
+            activeFieldLabel={MEASUREMENT_FIELDS.find(f => f.id === activeField)?.label || ''}
+          />
+        ) : (
+          <View style={[styles.footer, { paddingBottom: insets.bottom || 20 }]}>
+            <TouchableOpacity 
+              style={[styles.primaryButton, isSaving ? { opacity: 0.7 } : null]} 
+              onPress={handleSaveChanges}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color={COLORS.text} />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>Update Profile</Text>
+                  <Ionicons name="checkmark-circle" size={20} color={COLORS.text} style={{ marginLeft: 8 }} />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -269,32 +334,34 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 12 },
   
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(22, 29, 38, 0.05)' },
-  backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F7F8FA', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
   headerTitle: { fontSize: 24, fontWeight: '900', color: COLORS.text, letterSpacing: -0.5 },
-  headerSubtitle: { fontFamily: 'NotoNastaliqUrdu', fontSize: 15, color: 'rgba(22, 29, 38, 0.5)', marginTop: -4 },
+  headerSubtitle: { fontFamily: 'NotoNastaliqUrdu', fontSize: 15, color: colors.textOpacity(0.5), marginTop: -4 },
 
-  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F8FA', borderRadius: 24, padding: 16, marginBottom: 24 },
-  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.accent, borderColor: '#161D26', borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  profileId: { fontSize: 28, fontWeight: '900', color: COLORS.text, letterSpacing: 1 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 24, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: '#E8ECEF', ...Platform.select({ ios: { shadowColor: colors.text, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 }, android: { elevation: 2 } }) },
+  idTag: { backgroundColor: colors.primaryLight, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.primary, minWidth: 64, alignItems: 'center', justifyContent: 'center' },
+  idTagText: { color: colors.text, fontSize: 20, fontWeight: '900' },
 
   section: { marginBottom: 32 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginBottom: 16 },
 
   formGroup: { gap: 8, marginBottom: 16 },
   label: { fontSize: 15, fontWeight: '800', color: COLORS.text, marginLeft: 4 },
-  inputContainer: { backgroundColor: '#F7F8FA', borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
+  inputContainer: { backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
   inputField: { flex: 1, fontSize: 16, color: COLORS.text, fontWeight: '600', paddingVertical: 0 },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  gridItem: { width: '48%', backgroundColor: '#F7F8FA', borderRadius: 20, padding: 16, marginBottom: 16 },
-  gridHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  gridLabelEnglish: { fontSize: 13, fontWeight: '800', color: 'rgba(22, 29, 38, 0.6)' },
-  gridLabelUrdu: { fontFamily: 'NotoNastaliqUrdu', fontSize: 14, color: 'rgba(22, 29, 38, 0.6)' },
-  gridInputContainer: { backgroundColor: '#FFFFFF', borderRadius: 12, height: 48, justifyContent: 'center', paddingHorizontal: 12 },
-  gridInput: { flex: 1, fontSize: 18, fontWeight: '800', color: COLORS.text, textAlign: 'center', paddingVertical: 0 },
+  measureInput: { width: '48%', backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 2, borderColor: 'transparent' },
+  measureInputActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  measureLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  measureLabelEng: { fontSize: 12, fontWeight: '700', color: colors.textOpacity(0.4) },
+  measureLabelUrdu: { fontFamily: 'NotoNastaliqUrdu', fontSize: 12, color: colors.textOpacity(0.4), marginTop: -4 },
+  measureValue: { fontSize: 24, fontWeight: '800', color: colors.text },
+  measureValueEmpty: { color: colors.textOpacity(0.2) },
+  measureValueActive: { color: colors.primary },
 
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', paddingHorizontal: 20, paddingTop: 16, backgroundColor: '#FFFFFF', gap: 12, borderTopWidth: 1, borderTopColor: 'rgba(22, 29, 38, 0.05)' },
-  secondaryButton: { flex: 1, flexDirection: 'row', backgroundColor: '#F7F8FA', height: 60, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', paddingHorizontal: 20, paddingTop: 16, backgroundColor: colors.white, gap: 12, borderTopWidth: 1, borderTopColor: 'rgba(22, 29, 38, 0.05)' },
+  secondaryButton: { flex: 1, flexDirection: 'row', backgroundColor: colors.surface, height: 60, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
   primaryButton: { flex: 1, flexDirection: 'row', backgroundColor: COLORS.accent, height: 60, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },

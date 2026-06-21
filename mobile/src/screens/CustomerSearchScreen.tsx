@@ -7,13 +7,15 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase';
 import { containsUrdu } from '../utils/textUtils';
 import type { RootStackParamList } from '../../App';
+import { colors } from '../theme/colors';
+
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomerSearch'>;
 
 const COLORS = {
-  background: '#FFFFFF',
-  text: '#161d26',
-  accent: '#00e482',
+  background: colors.white,
+  text: colors.text,
+  accent: colors.primary,
 };
 
 type CustomerData = {
@@ -209,24 +211,24 @@ export default function CustomerSearchScreen({ navigation }: Props) {
               
               <View style={styles.binaryCardsContainer}>
                 <TouchableOpacity 
-                  style={[styles.bigChoiceCard, { borderColor: COLORS.accent, backgroundColor: '#E8FDF3' }]} 
+                  style={[styles.bigChoiceCard, { borderColor: COLORS.accent, backgroundColor: colors.primaryLight }]} 
                   onPress={() => setViewState('create')}
                   activeOpacity={0.8}
                 >
-                  <View style={[styles.iconCircle, { backgroundColor: '#00e482' }]}>
-                    <Ionicons name="person-add" size={40} color="#161D26" />
+                  <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
+                    <Ionicons name="person-add" size={40} color={colors.text} />
                   </View>
                   <Text style={styles.bigChoiceTitle}>New Customer</Text>
                   <Text style={styles.bigChoiceUrdu}>نیا گاہک</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.bigChoiceCard, { borderColor: 'transparent', backgroundColor: '#F7F8FA' }]} 
+                  style={[styles.bigChoiceCard, { borderColor: 'transparent', backgroundColor: colors.surface }]} 
                   onPress={() => setViewState('search')}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.iconCircle, { backgroundColor: '#E0E0E0' }]}>
-                    <Ionicons name="search" size={40} color="#161D26" />
+                    <Ionicons name="search" size={40} color={colors.text} />
                   </View>
                   <Text style={styles.bigChoiceTitle}>Existing Customer</Text>
                   <Text style={styles.bigChoiceUrdu}>پرانا گاہک</Text>
@@ -236,7 +238,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
           ) : viewState === 'search' ? (
             <View style={styles.viewContent}>
               <View style={styles.searchBar}>
-                <Ionicons name="search" size={20} color="rgba(22, 29, 38, 0.5)" />
+                <Ionicons name="search" size={20} color={colors.textOpacity(0.5)} />
                 <View style={styles.inputContainer}>
                   <TextInput
                     style={[
@@ -244,7 +246,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                       containsUrdu(searchQuery) && { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 18, includeFontPadding: false }
                     ]}
                     placeholder="Search name, phone, or #..."
-                    placeholderTextColor="rgba(22, 29, 38, 0.4)"
+                    placeholderTextColor={colors.textOpacity(0.4)}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     autoCorrect={false}
@@ -252,7 +254,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                 </View>
                 {searchQuery.length > 0 ? (
                   <Pressable onPress={() => setSearchQuery('')}>
-                    <Ionicons name="close-circle" size={20} color="rgba(22, 29, 38, 0.3)" />
+                    <Ionicons name="close-circle" size={20} color={colors.textOpacity(0.3)} />
                   </Pressable>
                 ) : null}
               </View>
@@ -265,7 +267,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                 <ActivityIndicator color={COLORS.accent} style={{ marginTop: 20 }} />
               ) : customers.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Ionicons name="people-outline" size={48} color="rgba(22, 29, 38, 0.1)" />
+                  <Ionicons name="people-outline" size={48} color={colors.textOpacity(0.1)} />
                   <Text style={styles.emptyStateText}>No customers found.</Text>
                 </View>
               ) : (
@@ -277,7 +279,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                       onPress={() => fetchAndNavigate(item.id, item.customer_number, item.name, item.phone)}
                     >
                       <View style={styles.avatar}>
-                        <Ionicons name="person" size={24} color="#161D26" />
+                        <Ionicons name="person" size={24} color={colors.text} />
                       </View>
                       <View style={styles.customerInfo}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -293,7 +295,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                         </View>
                         <Text style={styles.customerPhone}>{item.phone || 'No phone'}</Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={20} color="rgba(22, 29, 38, 0.2)" />
+                      <Ionicons name="chevron-forward" size={20} color={colors.textOpacity(0.2)} />
                     </Pressable>
                   ))}
                 </View>
@@ -302,11 +304,11 @@ export default function CustomerSearchScreen({ navigation }: Props) {
           ) : (
             <View style={styles.viewContent}>
               <View style={styles.autoIdBanner}>
-                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#E8FDF3', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="pricetag" size={24} color={COLORS.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: 'rgba(22, 29, 38, 0.6)', marginBottom: 2 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textOpacity(0.6), marginBottom: 2 }}>
                     Customer Number
                   </Text>
                   <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.text, letterSpacing: 1 }}>
@@ -328,7 +330,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                     value={name}
                     onChangeText={setName}
                     placeholder="e.g. Ali Khan"
-                    placeholderTextColor="rgba(22, 29, 38, 0.3)"
+                    placeholderTextColor={colors.textOpacity(0.3)}
                   />
                 </View>
               </View>
@@ -343,7 +345,7 @@ export default function CustomerSearchScreen({ navigation }: Props) {
                     value={phone}
                     onChangeText={setPhone}
                     placeholder="e.g. 0300 1234567"
-                    placeholderTextColor="rgba(22, 29, 38, 0.3)"
+                    placeholderTextColor={colors.textOpacity(0.3)}
                     keyboardType="phone-pad"
                   />
                 </View>
@@ -397,7 +399,7 @@ const styles = StyleSheet.create({
 
   // Initial State Styles
   initialStateContainer: { flex: 1, paddingTop: 12 },
-  promptText: { fontSize: 18, fontWeight: '700', color: 'rgba(22, 29, 38, 0.6)', marginBottom: 24, textAlign: 'center' },
+  promptText: { fontSize: 18, fontWeight: '700', color: colors.textOpacity(0.6), marginBottom: 24, textAlign: 'center' },
   binaryCardsContainer: { gap: 16 },
   bigChoiceCard: { 
     alignItems: 'center', 
@@ -407,8 +409,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   iconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  bigChoiceTitle: { fontSize: 24, fontWeight: '900', color: '#161D26', marginBottom: 4 },
-  bigChoiceUrdu: { fontFamily: 'NotoNastaliqUrdu', fontSize: 20, color: 'rgba(22, 29, 38, 0.6)', lineHeight: 36, paddingTop: 4 },
+  bigChoiceTitle: { fontSize: 24, fontWeight: '900', color: colors.text, marginBottom: 4 },
+  bigChoiceUrdu: { fontFamily: 'NotoNastaliqUrdu', fontSize: 20, color: colors.textOpacity(0.6), lineHeight: 36, paddingTop: 4 },
 
   viewContent: { flex: 1, gap: 20 },
 
@@ -416,7 +418,7 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
@@ -432,7 +434,7 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    color: 'rgba(22, 29, 38, 0.5)',
+    color: colors.textOpacity(0.5),
     fontSize: 14,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -441,14 +443,14 @@ const styles = StyleSheet.create({
   },
 
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 12 },
-  emptyStateText: { color: 'rgba(22, 29, 38, 0.4)', fontSize: 15, fontWeight: '600' },
+  emptyStateText: { color: colors.textOpacity(0.4), fontSize: 15, fontWeight: '600' },
 
   // Customer List
   customerList: { gap: 12 },
   customerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 20,
     padding: 16,
     ...Platform.select({
@@ -456,23 +458,23 @@ const styles = StyleSheet.create({
       android: { elevation: 2 },
     }),
   },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.accent, borderColor: '#161D26', borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.accent, borderColor: colors.text, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   customerInfo: { flex: 1, gap: 2 },
   customerName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
-  customerPhone: { color: 'rgba(22, 29, 38, 0.5)', fontSize: 13, fontWeight: '600' },
+  customerPhone: { color: colors.textOpacity(0.5), fontSize: 13, fontWeight: '600' },
 
   // Create Form
-  autoIdBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F8FA', padding: 16, borderRadius: 20, gap: 16, borderWidth: 2, borderColor: '#F0F0F0' },
+  autoIdBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 20, gap: 16, borderWidth: 2, borderColor: colors.border },
   formGroup: { gap: 8 },
   label: { fontSize: 15, fontWeight: '800', color: COLORS.text, marginLeft: 4 },
-  inputContainer: { backgroundColor: '#F7F8FA', borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
+  inputContainer: { backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
   inputField: { flex: 1, fontSize: 16, color: COLORS.text, fontWeight: '600', paddingVertical: 0 },
 
   // Footer Actions
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 16, backgroundColor: 'transparent' },
   primaryButton: {
     flexDirection: 'row', width: '100%', borderRadius: 24, backgroundColor: COLORS.accent, height: 60, alignItems: 'center', justifyContent: 'center',
-    ...Platform.select({ ios: { shadowColor: '#00e482', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 }, android: { elevation: 6 } }),
+    ...Platform.select({ ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 }, android: { elevation: 6 } }),
   },
   primaryButtonText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
 });

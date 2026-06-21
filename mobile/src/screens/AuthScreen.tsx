@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../theme/colors';
 
 export default function AuthScreen() {
   const [shopKey, setShopKey] = useState('');
@@ -48,7 +49,7 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder="e.g. INCHI-XXXX-XXXX"
-              placeholderTextColor="rgba(22, 29, 38, 0.4)"
+              placeholderTextColor={colors.textOpacity(0.4)}
               value={shopKey}
               onChangeText={setShopKey}
               autoCapitalize="characters"
@@ -62,7 +63,7 @@ export default function AuthScreen() {
               disabled={isLoading}
             >
               {isLoading ? (
-                <ActivityIndicator color="#161d26" />
+                <ActivityIndicator color={colors.text} />
               ) : (
                 <Text style={styles.buttonText}>Access Dashboard</Text>
               )}
@@ -77,7 +78,7 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#00e482',
+    backgroundColor: colors.primary,
   },
   container: {
     flex: 1,
@@ -94,20 +95,20 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 56,
     fontWeight: '900',
-    color: '#161d26',
+    color: colors.text,
     letterSpacing: 2,
   },
   tagline: {
     fontSize: 16,
-    color: '#161d26',
+    color: colors.text,
     fontWeight: '600',
     marginTop: 5,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 24,
     padding: 30,
-    shadowColor: '#000',
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
@@ -116,30 +117,30 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#161d26',
+    color: colors.text,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 15,
-    color: 'rgba(22, 29, 38, 0.6)',
+    color: colors.textOpacity(0.6),
     marginBottom: 30,
     lineHeight: 22,
   },
   input: {
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(22, 29, 38, 0.1)',
+    borderColor: colors.textOpacity(0.1),
     borderRadius: 16,
     padding: 18,
     fontSize: 18,
     fontWeight: '600',
-    color: '#161d26',
+    color: colors.text,
     marginBottom: 24,
     textAlign: 'center',
     letterSpacing: 2,
   },
   button: {
-    backgroundColor: '#00e482',
+    backgroundColor: colors.primary,
     padding: 20,
     borderRadius: 16,
     alignItems: 'center',
@@ -148,7 +149,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: '#161d26',
+    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
   },

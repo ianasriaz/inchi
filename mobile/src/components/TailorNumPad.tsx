@@ -1,14 +1,16 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
 
-export type TailorNumPadKey =
+type TailorNumPadKey =
   | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0' | '.'
   | '¼' | '½' | '¾' | '⌫' | 'NEXT';
 
 type TailorNumPadProps = {
   onKeyPress: (key: TailorNumPadKey) => void;
   onClose?: () => void;
+  activeFieldLabel?: string;
 };
 
 const KEYS: TailorNumPadKey[][] = [
@@ -18,14 +20,14 @@ const KEYS: TailorNumPadKey[][] = [
   ['.', '0', '⌫', 'NEXT'],
 ];
 
-export default function TailorNumPad({ onKeyPress, onClose }: TailorNumPadProps) {
+export default function TailorNumPad({ onKeyPress, onClose, activeFieldLabel }: TailorNumPadProps) {
   return (
     <View style={styles.container}>
       {onClose && (
         <View style={styles.toolbar}>
           <View style={styles.toolbarHandle} />
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Ionicons name="chevron-down" size={24} color="#161d26" />
+            <Ionicons name="chevron-down" size={24} color={colors.text} />
           </TouchableOpacity>
         </View>
       )}
@@ -58,7 +60,7 @@ export default function TailorNumPad({ onKeyPress, onClose }: TailorNumPadProps)
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     ...Platform.select({
@@ -71,7 +73,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.border,
     position: 'relative',
   },
   toolbarHandle: {
@@ -91,7 +93,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 32, // Extra padding for bottom safe area
+    paddingBottom: 32,
   },
   row: {
     flexDirection: 'row',
@@ -101,24 +103,24 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 56,
     borderRadius: 16,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionKey: {
-    backgroundColor: '#00e482',
+    backgroundColor: colors.primary,
     ...Platform.select({
-      ios: { shadowColor: '#00e482', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+      ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
       android: { elevation: 3 },
     }),
   },
   keyText: {
-    color: '#161d26',
+    color: colors.text,
     fontSize: 22,
     fontWeight: '800',
   },
   actionKeyText: {
-    color: '#161d26',
+    color: colors.text,
     fontSize: 20,
     fontWeight: '900',
   },
