@@ -79,10 +79,11 @@ mobile/
 
 ## 5. UI Design Tokens & Theme Guidelines
 The app utilizes a premium, high-contrast **Light Theme** optimised for bright tailor shops.
-* **Background Colors:** Pure White (`#FFFFFF`) or off-white light grey (`#F7F8FA`) for input elements.
-* **Text & Contrast Elements:** Dark Slate (`#161D26`).
-* **Active/Accent Color:** Vibrant Mint Green (`#00e482`).
-* **Profile / Customer Cards:** Styled as premium light cards (`#F7F8FA`) with clean borders (`#E8ECEF`) and distinct, high-contrast text. **Never use dark backgrounds for these panels.**
+* **Colors:** All colors are centralized in `src/theme/colors.ts`. **DO NOT use hardcoded hex values.** Always import `colors` from the theme folder.
+* **Background Colors:** `colors.background` (Pure White) or `colors.surface` (light grey) for input elements.
+* **Text & Contrast Elements:** `colors.text` (Dark Slate).
+* **Active/Accent Color:** `colors.primary` (Mint Green).
+* **Profile / Customer Cards:** Styled as premium light cards (`colors.surface`) with clean borders (`colors.border`) and distinct, high-contrast text. **Never use dark backgrounds for these panels.**
 
 ---
 
