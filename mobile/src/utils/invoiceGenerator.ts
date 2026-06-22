@@ -17,9 +17,11 @@ export const generateCustomerHtml = (
   orderNumber: string | number,
   customerName: string,
   customerPhone: string,
+  customerNumber: number | string | null | undefined,
   bookingDate: string,
   pickupDate: string,
   garmentType: string,
+  quantity: number,
   measurements: Record<string, string>,
   style: any,
   notes: string,
@@ -74,18 +76,22 @@ export const generateCustomerHtml = (
         </div>
         
         <div style="text-align: center; margin-bottom: 20px;">
-          <div style="font-size: 24px; font-weight: bold; background: #000; color: #fff; padding: 5px 15px; border-radius: 4px; display: inline-block;">Order No. #${orderNumber}</div>
+          <div style="font-size: 24px; font-weight: bold; background: #000; color: #fff; padding: 10px 15px; border-radius: 4px; display: block; width: 100%; box-sizing: border-box;">Booking No. #${orderNumber}</div>
         </div>
 
         <div style="border: 1px solid #ccc; margin-bottom: 20px; border-radius: 4px;">
           <div style="background: #f8f8f8; padding: 10px 15px; border-bottom: 1px solid #ccc; font-size: 20px; font-weight: bold; text-transform: uppercase;">
             <span style="color: #555; font-size: 14px; text-transform: none; font-weight: normal; margin-right: 5px;">Customer Name <span class="urdu-label">(نام)</span>:</span> ${customerName}
           </div>
-          <div style="display: flex; flex-wrap: wrap; padding: 10px 15px; font-size: 15px;">
+          <div style="display: flex; flex-wrap: wrap; padding: 10px 15px; font-size: 15px; border-bottom: 1px solid #ccc; background: #fff;">
+            <div style="width: 50%;"><strong>Customer No <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(نمبر)</span>:</strong> #${customerNumber || 'N/A'}</div>
+            <div style="width: 50%;"><strong>Phone <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(فون)</span>:</strong> ${customerPhone || '-'}</div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; padding: 10px 15px; font-size: 15px; background: #fff;">
             <div style="width: 50%; margin-bottom: 8px;"><strong>Booking <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(تاریخ)</span>:</strong> ${bookingDate}</div>
             <div style="width: 50%; margin-bottom: 8px;"><strong>Delivery <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(واپسی)</span>:</strong> ${pickupDate}</div>
             <div style="width: 50%;"><strong>Garment <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(سوٹ)</span>:</strong> ${garmentType || 'Kameez Shalwar'}</div>
-            <div style="width: 50%;"><strong>Phone <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(فون)</span>:</strong> ${customerPhone || '-'}</div>
+            <div style="width: 50%;"><strong>Quantity <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(تعداد)</span>:</strong> ${quantity || 1}</div>
           </div>
         </div>
         

@@ -35,9 +35,10 @@ export default function MeasurementScreen({ route, navigation }: any) {
   const [measurements, setMeasurements] = useState<Record<string, string>>({});
   const [activeField, setActiveField] = useState<string | null>(null);
   const [isNumPadVisible, setIsNumPadVisible] = useState(false);
-  const [collar, setCollar] = useState('Ban');
-  const [pockets, setPockets] = useState<string[]>(['آگے']);
+  const [collar, setCollar] = useState('');
+  const [pockets, setPockets] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
+  const [quantity, setQuantity] = useState(1);
 
   // Customer Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -210,10 +211,12 @@ export default function MeasurementScreen({ route, navigation }: any) {
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
         customerPhone: selectedCustomer.phone,
+        customerNumber: selectedCustomer.customer_number,
         garmentType,
         measurements,
         style: { collar, pockets },
         notes,
+        quantity,
       });
     } else {
       navigation.navigate('NewCustomerPrompt', {
@@ -221,6 +224,7 @@ export default function MeasurementScreen({ route, navigation }: any) {
         measurements,
         style: { collar, pockets },
         notes,
+        quantity,
       });
     }
   };
@@ -326,7 +330,7 @@ export default function MeasurementScreen({ route, navigation }: any) {
 
           {/* Measurements Grid */}
           <View style={styles.section} onLayout={(e) => setGridY(e.nativeEvent.layout.y)}>
-            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, includeFontPadding: false, marginTop: -4 }]}>
+            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, textAlign: 'right', width: '100%' }]}>
               {garmentType === 'Kameez Shalwar' ? 'قمیض شلوار کی پیمائش درج کریں' : `${garmentType} Measurements`}
             </Text>
             <View style={styles.grid}>
@@ -358,55 +362,81 @@ export default function MeasurementScreen({ route, navigation }: any) {
             </View>
           </View>
 
-          {/* Style Options */}
+          {/* Collar Section */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, includeFontPadding: false, marginTop: -4 }]}>اسٹائل</Text>
-            <Text style={styles.styleLabel}>Collar Design</Text>
+            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, textAlign: 'right', width: '100%' }]}>کالر کا اسٹائل</Text>
             <View style={styles.row}>
               {[
-                { id: 'Ban', icon: 'remove-outline' },
-                { id: 'Round', icon: 'ellipse-outline' }
+                'بین کالر',
+                'گول کالر'
               ].map(opt => {
-                const isActive = collar === opt.id;
+                const isActive = collar === opt;
                 return (
                   <TouchableOpacity
-                    key={opt.id}
-                    style={[styles.stylePill, isActive ? styles.stylePillActive : null]}
-                    onPress={() => setCollar(opt.id)}
+                    key={opt}
+                    style={[styles.stylePill, { flex: 1, justifyContent: 'center' }, isActive ? styles.stylePillActive : null]}
+                    onPress={() => setCollar(opt)}
                   >
-                    <Ionicons name={opt.icon as any} size={18} color={isActive ? colors.primary : colors.text} />
-                    <Text style={[styles.stylePillText, isActive ? styles.stylePillTextActive : null]}>{opt.id}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.styleLabel}>Pockets</Text>
-            <View style={styles.row}>
-              {[
-                { id: 'آگے', icon: 'square-outline' },
-                { id: 'ایک سائیڈ', icon: 'document-outline' },
-                { id: 'دونوں سائیڈ', icon: 'copy-outline' },
-                { id: 'شلوار', icon: 'wallet-outline' }
-              ].map(opt => {
-                const isActive = pockets.includes(opt.id);
-                return (
-                  <TouchableOpacity
-                    key={opt.id}
-                    style={[styles.stylePill, isActive ? styles.stylePillActive : null]}
-                    onPress={() => togglePocket(opt.id)}
-                  >
-                    <Ionicons name={opt.icon as any} size={18} color={isActive ? colors.primary : colors.text} />
-                    <Text style={[styles.stylePillText, isActive ? styles.stylePillTextActive : null, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 18, marginTop: -4 }]}>{opt.id}</Text>
+                    <AppText style={[styles.stylePillText, isActive ? styles.stylePillTextActive : null, { fontSize: 15, marginTop: -4, fontWeight: 'normal', textAlign: 'center' }]}>{opt}</AppText>
                   </TouchableOpacity>
                 );
               })}
             </View>
           </View>
 
+          {/* Pockets Section */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, textAlign: 'right', width: '100%' }]}>جیب</Text>
+            <View style={styles.row}>
+              {[
+                'آگے',
+                'ایک سائیڈ',
+                'دونوں سائیڈ',
+                'شلوار'
+              ].map(opt => {
+                const isActive = pockets.includes(opt);
+                return (
+                  <TouchableOpacity
+                    key={opt}
+                    style={[styles.stylePill, { flex: 1, minWidth: '45%', justifyContent: 'center' }, isActive ? styles.stylePillActive : null]}
+                    onPress={() => togglePocket(opt)}
+                  >
+                    <AppText style={[styles.stylePillText, isActive ? styles.stylePillTextActive : null, { fontSize: 15, marginTop: -4, fontWeight: 'normal', textAlign: 'center' }]}>{opt}</AppText>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Quantity Selector */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, textAlign: 'right', width: '100%' }]}>کپڑوں کی تعداد</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surface, padding: 16, borderRadius: 16 }}>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Quantity</Text>
+                <Text style={{ fontFamily: 'NotoNastaliqUrdu', fontSize: 14, color: colors.textOpacity(0.5), marginTop: -4 }}>تعداد</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <TouchableOpacity 
+                  onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Ionicons name="remove" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={{ fontSize: 24, fontWeight: '900', color: colors.primary, minWidth: 28, textAlign: 'center' }}>{quantity}</Text>
+                <TouchableOpacity 
+                  onPress={() => setQuantity(quantity + 1)}
+                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Ionicons name="add" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
           {/* Notes */}
           <View style={[styles.section, { paddingBottom: 40 }]}>
-            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, includeFontPadding: false, marginTop: -4 }]}>مزید ہدایات</Text>
+            <Text style={[styles.sectionTitle, { fontFamily: 'NotoNastaliqUrdu', fontWeight: 'normal', fontSize: 22, textAlign: 'right', width: '100%' }]}>مزید ہدایات</Text>
             <TextInput
               style={styles.notesInput}
               placeholder="e.g. Collar thora dheela rakhein..."
@@ -433,8 +463,8 @@ export default function MeasurementScreen({ route, navigation }: any) {
         ) : !isKeyboardVisible ? (
           <View style={styles.bottomBar}>
             <TouchableOpacity style={styles.nextButton} onPress={handleConfirm}>
-              <Text style={styles.nextButtonText}>Save</Text>
-              <Ionicons name="save-outline" size={20} color={colors.text} />
+              <AppText style={[styles.nextButtonText, { fontSize: 20 }]}>ٹھیک ہے</AppText>
+              <Ionicons name="checkmark-done" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
         ) : null}

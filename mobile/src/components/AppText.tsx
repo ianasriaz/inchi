@@ -47,9 +47,7 @@ export default function AppText({ children, style, ...props }: AppTextProps) {
               fontFamily: urduFontFamily,
               fontWeight: 'normal',
               fontSize: urduFontSize,
-              includeFontPadding: false,
-              // Nastaliq characters often sit a bit higher on the baseline, 
-              // a tiny vertical offset aligns them perfectly with English.
+              // Explicitly NOT setting includeFontPadding: false so Android uses the font's native generous bounding box
               ...Platform.select({
                 ios: { top: 2 },
                 android: { marginTop: 2 }
@@ -78,8 +76,7 @@ export default function AppText({ children, style, ...props }: AppTextProps) {
       style={[
         style, 
         containsUrdu && { 
-          lineHeight: baseFontSize * 1.8, 
-          paddingVertical: 6,
+          // Do not restrict lineHeight as it causes cropping in Nastaliq
           overflow: 'visible'
         }
       ]} 

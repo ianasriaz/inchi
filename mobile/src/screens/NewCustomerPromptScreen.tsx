@@ -18,7 +18,7 @@ const COLORS = {
 };
 
 export default function NewCustomerPromptScreen({ route, navigation }: Props) {
-  const { garmentType, measurements, style, notes } = route.params;
+  const { garmentType, measurements, style, notes, quantity } = route.params;
   
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -55,10 +55,12 @@ export default function NewCustomerPromptScreen({ route, navigation }: Props) {
         customerId: data.id,
         customerName: data.name || 'Unknown',
         customerPhone: data.phone || '',
+        customerNumber: data.customer_number,
         garmentType,
         measurements,
         style,
         notes,
+        quantity,
       });
     } catch (error) {
       console.error('Customer create failed:', error);

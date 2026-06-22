@@ -34,6 +34,7 @@ export type RootStackParamList = {
     measurements: Record<string, string>;
     style: { collar: string; pockets: string[] };
     notes: string;
+    quantity?: number;
   };
   CustomerSearch: undefined;
   CustomerProfile: { customerId: number };
@@ -43,10 +44,12 @@ export type RootStackParamList = {
         customerId: number;
         customerName: string;
         customerPhone: string;
+        customerNumber?: number | null;
         garmentType: string;
         measurements: Record<string, string>;
         style: { collar: string; pockets: string[] };
         notes: string;
+        quantity?: number;
       }
     | undefined;
 };

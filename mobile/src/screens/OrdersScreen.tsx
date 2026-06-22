@@ -30,6 +30,7 @@ type OrderRow = {
   customers: {
     name: string | null;
     phone: string | null;
+    customer_number?: number | null;
   } | null;
   measurements: any;
   style_options: any;
@@ -64,7 +65,7 @@ export default function OrdersScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('*, customers(name, phone)')
+        .select('*, customers(name, phone, customer_number)')
         .eq('shop_id', user!.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -139,9 +140,11 @@ export default function OrdersScreen() {
         order.order_number,
         order.customers?.name || 'Unknown Customer',
         order.customers?.phone || '',
+        order.customers?.customer_number,
         bookingDate,
         pickupDate,
         order.garment_type,
+        order.style_options?.quantity || 1,
         order.measurements || {},
         order.style_options || {},
         order.style_options?.notes || '',
@@ -231,7 +234,7 @@ export default function OrdersScreen() {
               {customerName}
             </AppText>
             <Text style={{ fontSize: 14, color: colors.textOpacity(0.5), fontWeight: '700' }}>
-              {item.garment_type}
+              {item.style_options?.quantity && item.style_options.quantity > 1 ? `${item.style_options.quantity}x ` : ''}{item.garment_type}
             </Text>
             <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', width: '100%' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -304,7 +307,7 @@ export default function OrdersScreen() {
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Order #{selectedOrder.order_number}</Text>
-                <Text style={styles.modalSubtitle}>{selectedOrder.customers?.name}</Text>
+                <Text style={styles.modalSubtitle}>{selectedOrder.customers?.name} {selectedOrder.customers?.customer_number ? `(#${selectedOrder.customers.customer_number})` : ''}</Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
@@ -475,7 +478,7 @@ const styles = StyleSheet.create({
   },
   orderRowTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 },
   orderTextBlock: { flex: 1, paddingRight: 12 },
-  orderCustomerName: { color: COLORS.text, fontSize: 18, fontWeight: '800', lineHeight: 24, marginBottom: 4 },
+  orderCustomerName: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   orderMeta: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   datesRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 },
   dateText: { color: colors.textOpacity(0.6), fontSize: 13, fontWeight: '600' },

@@ -12,7 +12,7 @@ import { containsUrdu } from '../utils/textUtils';
 import AppText from '../components/AppText';
 
 export default function InvoiceScreen({ route, navigation }: any) {
-  const { customerId, customerName, customerPhone, garmentType, measurements, style, notes } = route.params;
+  const { customerId, customerName, customerPhone, customerNumber, garmentType, measurements, style, notes, quantity = 1 } = route.params;
 
   const [total, setTotal] = useState('');
   const [advance, setAdvance] = useState('');
@@ -75,7 +75,7 @@ export default function InvoiceScreen({ route, navigation }: any) {
         customer_id: customerId,
         garment_type: garmentType || 'Kameez Shalwar',
         measurements: measurements,
-        style_options: { ...style, notes, bookingDate, pickupDate },
+        style_options: { ...style, notes, bookingDate, pickupDate, quantity },
         total_amount: totalNum,
         advance_amount: advanceNum,
         status: 'pending'
@@ -139,7 +139,7 @@ export default function InvoiceScreen({ route, navigation }: any) {
           
           .style-box { border: 1px solid #000; padding: 15px; margin-bottom: 20px; font-size: 15px; }
           
-          .finance-box { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; width: 60%; float: right; background: #fafafa; border-radius: 4px; }
+          .finance-box { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; width: 100%; box-sizing: border-box; background: #fafafa; border-radius: 4px; }
           .finance-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 16px; }
           .finance-row.total { font-weight: bold; font-size: 18px; border-top: 1px solid #ccc; padding-top: 8px; margin-top: 5px; }
           .finance-row.balance { font-size: 22px; font-weight: bold; color: #000; background: #e8e8e8; padding: 10px; border: 1px solid #ccc; margin-top: 10px; border-radius: 4px; }
@@ -157,19 +157,25 @@ export default function InvoiceScreen({ route, navigation }: any) {
         </div>
         
         <div style="text-align: center; margin-bottom: 20px;">
-          <div style="font-size: 24px; font-weight: bold; background: #000; color: #fff; padding: 5px 15px; border-radius: 4px; display: inline-block;">Order No. #${orderNumber}</div>
+          <div style="font-size: 24px; font-weight: bold; background: #f8f8f8; color: #000; padding: 10px 15px; border: 1px solid #ccc; border-radius: 4px; display: block; width: 100%; box-sizing: border-box;">Booking No. #${orderNumber}</div>
         </div>
 
         <div style="border: 1px solid #ccc; margin-bottom: 20px; border-radius: 4px;">
-          <div style="background: #f8f8f8; padding: 10px 15px; border-bottom: 1px solid #ccc; font-size: 20px; font-weight: bold; text-transform: uppercase;">
-            <span style="color: #555; font-size: 14px; text-transform: none; font-weight: normal; margin-right: 5px; vertical-align: middle;">Customer Name <span class="urdu-label">(نام)</span>:</span> 
-            <span style="${containsUrdu(customerName) ? "font-family: 'Noto Nastaliq Urdu', serif; font-weight: normal; font-size: 20px; text-transform: none; vertical-align: middle;" : "vertical-align: middle;"}">${customerName}</span>
+          <div style="background: #f8f8f8; border-bottom: 1px solid #ccc;">
+            <div style="padding: 10px 15px 5px 15px; font-size: 20px; font-weight: bold; text-transform: uppercase;">
+              <span style="color: #555; font-size: 14px; text-transform: none; font-weight: normal; margin-right: 5px; vertical-align: middle;">Customer Name <span class="urdu-label">(نام)</span>:</span> 
+              <span style="${containsUrdu(customerName) ? "font-family: 'Noto Nastaliq Urdu', serif; font-weight: normal; font-size: 20px; text-transform: none; vertical-align: middle;" : "vertical-align: middle;"}">${customerName}</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; padding: 5px 15px 10px 15px; font-size: 15px;">
+              <div style="width: 50%;"><strong>Customer No <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(نمبر)</span>:</strong> #${customerNumber || 'N/A'}</div>
+              <div style="width: 50%;"><strong>Phone <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(فون)</span>:</strong> ${customerPhone || '-'}</div>
+            </div>
           </div>
-          <div style="display: flex; flex-wrap: wrap; padding: 10px 15px; font-size: 15px;">
+          <div style="display: flex; flex-wrap: wrap; padding: 10px 15px; font-size: 15px; background: #fff;">
             <div style="width: 50%; margin-bottom: 8px;"><strong>Booking <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(تاریخ)</span>:</strong> ${bookingDate}</div>
             <div style="width: 50%; margin-bottom: 8px;"><strong>Delivery <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(واپسی)</span>:</strong> ${pickupDate}</div>
             <div style="width: 50%;"><strong>Garment <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(سوٹ)</span>:</strong> ${garmentType || 'Kameez Shalwar'}</div>
-            <div style="width: 50%;"><strong>Phone <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(فون)</span>:</strong> ${customerPhone || '-'}</div>
+            <div style="width: 50%;"><strong>Quantity <span class="urdu-label" style="font-size: 14px; font-weight: normal;">(تعداد)</span>:</strong> x ${quantity || 1}</div>
           </div>
         </div>
         
@@ -239,8 +245,12 @@ export default function InvoiceScreen({ route, navigation }: any) {
           <h1 class="title">MASTER COPY &nbsp;|&nbsp; <span class="urdu-label">ماسٹر کاپی</span></h1>
           <div class="meta-text">
             <span style="vertical-align: middle;">Order #${orderNumber} &nbsp;&nbsp;|&nbsp;&nbsp; Customer:</span> 
-            <span style="${containsUrdu(customerName) ? "font-family: 'Noto Nastaliq Urdu', serif; font-weight: normal; font-size: 24px; vertical-align: middle;" : "vertical-align: middle;"}">${customerName}</span>
+            <span style="${containsUrdu(customerName) ? "font-family: 'Noto Nastaliq Urdu', serif; font-weight: normal; font-size: 24px; vertical-align: middle;" : "vertical-align: middle;"}">${customerName} (#${customerNumber})</span>
           </div>
+        </div>
+        
+        <div style="text-align: center; font-size: 28px; font-weight: bold; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px;">
+          ${garmentType || 'Kameez Shalwar'} x ${quantity}
         </div>
         
         <table class="measurements-table">
@@ -341,22 +351,34 @@ export default function InvoiceScreen({ route, navigation }: any) {
               {shopProfile?.phone && <Text style={styles.raseedContact}>Ph: {shopProfile.phone}</Text>}
             </View>
 
-            <View style={{ alignItems: 'center', marginBottom: 16 }}>
-              <View style={{ backgroundColor: '#000', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 4 }}>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>Order No. #{orderNumber}</Text>
+            <View style={{ width: '100%', marginBottom: 16 }}>
+              <View style={{ backgroundColor: '#f8f8f8', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 4, borderWidth: 1, borderColor: '#ccc', width: '100%' }}>
+                <Text style={{ color: '#000', fontSize: 18, fontWeight: 'bold', textAlign: 'center' }}>Booking No. #{orderNumber}</Text>
               </View>
             </View>
 
             <View style={{ borderWidth: 1, borderColor: '#ccc', marginBottom: 16, borderRadius: 4, overflow: 'hidden' }}>
-              <View style={{ backgroundColor: '#f8f8f8', padding: 12, borderBottomWidth: 1, borderBottomColor: '#ccc' }}>
-                <Text>
-                  <Text style={{ fontSize: 13, color: '#555' }}>Customer Name <Text style={styles.urduFont}>(نام)</Text>: </Text>
-                  <AppText style={{ fontSize: 18, fontWeight: 'bold', textTransform: 'uppercase', color: '#000' }}>
-                    {customerName}
-                  </AppText>
-                </Text>
+              <View style={{ backgroundColor: '#f8f8f8', borderBottomWidth: 1, borderBottomColor: '#ccc' }}>
+                <View style={{ padding: 12, paddingBottom: 6 }}>
+                  <Text>
+                    <Text style={{ fontSize: 13, color: '#555' }}>Customer Name <Text style={styles.urduFont}>(نام)</Text>: </Text>
+                    <AppText style={{ fontSize: 18, fontWeight: 'bold', textTransform: 'uppercase', color: '#000' }}>
+                      {customerName}
+                    </AppText>
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingBottom: 12 }}>
+                  <View style={{ width: '50%' }}>
+                    <Text style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>Customer No <Text style={styles.urduFont}>(نمبر)</Text></Text>
+                    <Text style={{ fontSize: 14, fontWeight: 'bold' }}>#{customerNumber || 'N/A'}</Text>
+                  </View>
+                  <View style={{ width: '50%' }}>
+                    <Text style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>Phone <Text style={styles.urduFont}>(فون)</Text></Text>
+                    <Text style={{ fontSize: 14, fontWeight: 'bold' }}>{customerPhone || '-'}</Text>
+                  </View>
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 12 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 12, backgroundColor: '#fff' }}>
                 <View style={{ width: '50%', marginBottom: 12 }}>
                   <Text style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>Booking <Text style={styles.urduFont}>(تاریخ)</Text></Text>
                   <Text style={{ fontSize: 14, fontWeight: 'bold' }}>{bookingDate}</Text>
@@ -370,8 +392,8 @@ export default function InvoiceScreen({ route, navigation }: any) {
                   <Text style={{ fontSize: 14, fontWeight: 'bold' }}>{garmentType || 'Kameez Shalwar'}</Text>
                 </View>
                 <View style={{ width: '50%' }}>
-                  <Text style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>Phone <Text style={styles.urduFont}>(فون)</Text></Text>
-                  <Text style={{ fontSize: 14, fontWeight: 'bold' }}>{customerPhone || '-'}</Text>
+                  <Text style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>Quantity <Text style={styles.urduFont}>(تعداد)</Text></Text>
+                  <Text style={{ fontSize: 14, fontWeight: 'bold' }}>x {quantity || 1}</Text>
                 </View>
               </View>
             </View>
@@ -626,7 +648,7 @@ const styles = StyleSheet.create({
   raseedStyleBox: { borderWidth: 1, borderColor: '#000', padding: 12, marginBottom: 20 },
   raseedStyleText: { fontSize: 13, color: '#000' },
 
-  raseedFinanceBox: { alignSelf: 'flex-end', width: '70%', borderWidth: 1, borderColor: '#ccc', padding: 12, marginBottom: 20, backgroundColor: '#fafafa', borderRadius: 4 },
+  raseedFinanceBox: { width: '100%', borderWidth: 1, borderColor: '#ccc', padding: 12, marginBottom: 20, backgroundColor: '#fafafa', borderRadius: 4 },
   raseedFinanceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   raseedFinanceLabel: { fontSize: 13, color: '#000' },
   raseedFinanceValue: { fontSize: 14, color: '#000' },

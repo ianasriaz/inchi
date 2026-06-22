@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   cardRowTop: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12 },
   avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: COLORS.accent, borderColor: colors.text, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   textBlock: { flex: 1, gap: 2 },
-  customerName: { color: COLORS.text, fontSize: 18, fontWeight: '800', lineHeight: 24 },
+  customerName: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   customerId: { color: COLORS.accent, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   customerMeta: { color: colors.textOpacity(0.5), fontSize: 13, marginTop: 2 },
   

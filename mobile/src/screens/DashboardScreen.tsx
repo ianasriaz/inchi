@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, StyleSheet, Text, View, RefreshControl, ScrollView, Platform } from 'react-native';
+import { Pressable, StyleSheet, Text, View, RefreshControl, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -48,7 +48,7 @@ export default function DashboardScreen({ navigation }: Props) {
     },
   });
 
-  const { data: stats = { stitchingOrders: 0, readyOrders: 0, deliveredOrders: 0 }, isRefetching: isStatsRefetching } = useQuery({
+  const { data: stats = { stitchingOrders: 0, readyOrders: 0, deliveredOrders: 0 }, isRefetching: isStatsRefetching, isLoading: isStatsLoading } = useQuery({
     queryKey: ['dashboardStats', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
@@ -118,7 +118,13 @@ export default function DashboardScreen({ navigation }: Props) {
             </View>
             <View style={styles.inProgressBody}>
               <View style={styles.inProgressLeft}>
-                <Text style={styles.bigNumber}>{stats.stitchingOrders}</Text>
+                {isStatsLoading ? (
+                  <View style={{ height: 60, justifyContent: 'center', alignItems: 'flex-start', marginBottom: -4 }}>
+                    <ActivityIndicator size="small" color={colors.text} />
+                  </View>
+                ) : (
+                  <Text style={styles.bigNumber}>{stats.stitchingOrders}</Text>
+                )}
                 <Text style={styles.urduLabel}>سلائی جاری ہے</Text>
               </View>
               <View style={styles.largeIconBox}>
@@ -134,7 +140,13 @@ export default function DashboardScreen({ navigation }: Props) {
               <View style={styles.smallIconCircleCompleted}>
                 <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
               </View>
-              <Text style={styles.bigNumberSmall}>{stats.readyOrders}</Text>
+              {isStatsLoading ? (
+                <View style={{ height: 48, justifyContent: 'center', alignItems: 'flex-start' }}>
+                  <ActivityIndicator size="small" color={colors.text} />
+                </View>
+              ) : (
+                <Text style={styles.bigNumberSmall}>{stats.readyOrders}</Text>
+              )}
               <View style={styles.halfCardBottom}>
                 <Text style={styles.urduLabelRight}>سلائی مکمل</Text>
               </View>
@@ -145,7 +157,13 @@ export default function DashboardScreen({ navigation }: Props) {
               <View style={styles.smallIconCircleToCollect}>
                 <Ionicons name="bag-handle-outline" size={16} color={colors.warning} />
               </View>
-              <Text style={styles.bigNumberSmall}>{stats.deliveredOrders}</Text>
+              {isStatsLoading ? (
+                <View style={{ height: 48, justifyContent: 'center', alignItems: 'flex-start' }}>
+                  <ActivityIndicator size="small" color={colors.text} />
+                </View>
+              ) : (
+                <Text style={styles.bigNumberSmall}>{stats.deliveredOrders}</Text>
+              )}
               <View style={styles.halfCardBottom}>
                 <Text style={styles.urduLabelRightToCollect}>وصول کر لیے</Text>
               </View>
@@ -203,7 +221,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: colors.white,
     marginTop: Platform.OS === 'ios' ? -4 : -6,
-    paddingVertical: 4,
+    marginBottom: Platform.OS === 'android' ? -12 : 0,
   },
   logoTextSub: {
     fontFamily: URDU_FONT,
