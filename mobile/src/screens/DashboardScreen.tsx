@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, StyleSheet, Text, View, RefreshControl, ScrollView, Platform, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
@@ -22,14 +22,6 @@ const URDU_FONT_BOLD = 'NotoNastaliqUrduBold';
 export default function DashboardScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const [currentDate, setCurrentDate] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentDate(new Date());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   const { data: user } = useQuery({
     queryKey: ['authUser'],
@@ -39,12 +31,12 @@ export default function DashboardScreen({ navigation }: Props) {
     },
   });
 
-  const { data: shopName = 'ڈیش بورڈ', isRefetching: isShopRefetching } = useQuery({
+  const { data: shopName = 'انچی', isRefetching: isShopRefetching } = useQuery({
     queryKey: ['shopName', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
       const { data } = await supabase.from('shops').select('name').eq('id', user!.id).single();
-      return data?.name || 'ڈیش بورڈ';
+      return data?.name || 'انچی';
     },
   });
 
@@ -70,29 +62,66 @@ export default function DashboardScreen({ navigation }: Props) {
     ]);
   }, [queryClient]);
 
-  const formattedDate = currentDate.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase();
+  // Helper to render stat number with loading state
+  const renderStatNumber = (value: number, size: 'large' | 'small', color: string = colors.primary) => {
+    if (isStatsLoading) {
+      return (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="small" color={color} />
+        </View>
+      );
+    }
+    return (
+      <Text style={[size === 'large' ? styles.bigNumber : styles.bigNumberSmall, { color }]}>
+        {value}
+      </Text>
+    );
+  };
+
+  // Empty state for zero orders
+  const renderEmptyState = () => {
+    if (!isStatsLoading && stats.stitchingOrders === 0 && stats.readyOrders === 0 && stats.deliveredOrders === 0) {
+      return (
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="cube-outline" size={48} color={colors.textOpacity(0.2)} />
+          <Text style={styles.emptyStateTextUrdu}>آج کا کوئی آرڈر نہیں</Text>
+          <Text style={styles.emptyStateSubText}>نیا آرڈر شروع کریں</Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  // Navigate to orders with filter
+  const navigateToOrders = (filter: 'all' | 'stitching' | 'ready' | 'delivered') => {
+    navigation.navigate('Orders', { filter });
+  };
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      {/* CLEAN MINIMAL HEADER */}
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerTop}>
-          <View style={styles.logoRow}>
-            <View style={styles.headerIconCircle}>
-              <Ionicons name="checkmark-circle" size={24} color={colors.white} />
-            </View>
-            <View style={{ marginLeft: 12, flex: 1 }}>
-              <AppText style={styles.logoTextUrdu} numberOfLines={1}>{shopName}</AppText>
-            </View>
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Text style={styles.headerTitle}>
+              Dashboard
+            </Text>
           </View>
-          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.headerIconCircle}>
-            <Ionicons name="settings-outline" size={20} color={colors.white} />
+
+          <Pressable
+            onPress={() => navigation.navigate('Settings')}
+            style={({ pressed }) => [
+              styles.settingsButton,
+              pressed && styles.settingsButtonPressed
+            ]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="settings-outline" size={22} color={colors.text} />
           </Pressable>
-        </View>
-        <View style={styles.headerTitles}>
-          <Text style={styles.dateText}>{formattedDate}</Text>
         </View>
       </View>
 
+      {/* SCROLL VIEW */}
       <ScrollView
         style={styles.scrollArea}
         contentContainerStyle={styles.scrollContent}
@@ -106,75 +135,88 @@ export default function DashboardScreen({ navigation }: Props) {
           />
         }
       >
+        {renderEmptyState()}
+
         <View style={styles.cardsContainer}>
-          {/* In Progress Card */}
-          <View style={styles.inProgressCard}>
-            <View style={styles.inProgressTopRow}>
-              <View style={styles.inProgressHeader}>
-                <View style={styles.smallIconCircle}>
-                  <Ionicons name="cut-outline" size={16} color={colors.primary} />
-                </View>
-              </View>
-            </View>
-            <View style={styles.inProgressBody}>
-              <View style={styles.inProgressLeft}>
-                {isStatsLoading ? (
-                  <View style={{ height: 60, justifyContent: 'center', alignItems: 'flex-start', marginBottom: -4 }}>
-                    <ActivityIndicator size="small" color={colors.text} />
-                  </View>
-                ) : (
-                  <Text style={styles.bigNumber}>{stats.stitchingOrders}</Text>
-                )}
-                <Text style={styles.urduLabel}>سلائی جاری ہے</Text>
-              </View>
-              <View style={styles.largeIconBox}>
-                <Ionicons name="cut-outline" size={36} color={colors.primary} />
-              </View>
+          {/* SHOP NAME CARD */}
+          <View style={styles.shopNameCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Ionicons name="storefront-outline" size={28} color={colors.text} />
+              <AppText style={styles.shopNameText}>{shopName}</AppText>
             </View>
           </View>
 
-          {/* Row Cards */}
-          <View style={styles.rowCards}>
-            {/* Completed Card */}
-            <View style={styles.halfCardCompleted}>
-              <View style={styles.smallIconCircleCompleted}>
-                <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
+          {/* STATS CARDS LAYOUT */}
+          <View style={styles.statsLayoutRow}>
+            {/* LEFT COLUMN: PRIMARY CARD */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryCard,
+                pressed && styles.primaryCardPressed,
+              ]}
+              onPress={() => navigateToOrders('stitching')}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.2)', borderless: false }}
+            >
+              <View>
+                <Text style={styles.primaryCardLabel}>سلائی جاری ہے</Text>
+                {renderStatNumber(stats.stitchingOrders, 'large', colors.white)}
               </View>
-              {isStatsLoading ? (
-                <View style={{ height: 48, justifyContent: 'center', alignItems: 'flex-start' }}>
-                  <ActivityIndicator size="small" color={colors.text} />
-                </View>
-              ) : (
-                <Text style={styles.bigNumberSmall}>{stats.readyOrders}</Text>
-              )}
-              <View style={styles.halfCardBottom}>
-                <Text style={styles.urduLabelRight}>سلائی مکمل</Text>
+              <View style={styles.primaryCardBottomRow}>
+                <Ionicons name="cut-outline" size={32} color={colors.white} />
+                <Ionicons name="arrow-forward" size={24} color={colors.white} />
               </View>
-            </View>
+            </Pressable>
 
-            {/* To Collect Card */}
-            <View style={styles.halfCardToCollect}>
-              <View style={styles.smallIconCircleToCollect}>
-                <Ionicons name="bag-handle-outline" size={16} color={colors.warning} />
-              </View>
-              {isStatsLoading ? (
-                <View style={{ height: 48, justifyContent: 'center', alignItems: 'flex-start' }}>
-                  <ActivityIndicator size="small" color={colors.text} />
+            {/* RIGHT COLUMN: SECONDARY CARDS */}
+            <View style={styles.secondaryCardsColumn}>
+              {/* Completed Card (Top) */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.secondaryCard,
+                  styles.completedCard,
+                  pressed && styles.secondaryCardPressed
+                ]}
+                onPress={() => navigateToOrders('ready')}
+                android_ripple={{ color: 'rgba(255, 255, 255, 0.2)', borderless: false }}
+              >
+                <View style={styles.secondaryCardTopRow}>
+                  <Ionicons name="arrow-down-outline" size={24} color={colors.white} />
+                  {renderStatNumber(stats.readyOrders, 'small', colors.white)}
                 </View>
-              ) : (
-                <Text style={styles.bigNumberSmall}>{stats.deliveredOrders}</Text>
-              )}
-              <View style={styles.halfCardBottom}>
-                <Text style={styles.urduLabelRightToCollect}>وصول کر لیے</Text>
-              </View>
+                <Text style={styles.secondaryCardLabel}>سلائی مکمل</Text>
+              </Pressable>
+
+              {/* Delivered Card (Bottom) */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.secondaryCard,
+                  styles.deliveredCard,
+                  pressed && styles.secondaryCardPressed
+                ]}
+                onPress={() => navigateToOrders('delivered')}
+                android_ripple={{ color: 'rgba(255, 255, 255, 0.2)', borderless: false }}
+              >
+                <View style={styles.secondaryCardTopRowDelivered}>
+                  {renderStatNumber(stats.deliveredOrders, 'small', colors.white)}
+                  <Ionicons name="arrow-up-outline" size={24} color={colors.white} style={{ transform: [{ rotate: '45deg' }] }} />
+                </View>
+                <Text style={styles.secondaryCardLabel}>وصول کر لیے</Text>
+              </Pressable>
             </View>
           </View>
 
-          {/* New Booking Button */}
-          <Pressable style={styles.newBookingBtn} onPress={() => navigation.navigate('GarmentSelect')}>
-            <Text style={styles.newBookingTextUrdu}>بکنگ کریں</Text>
-            <View style={styles.newBookingIconCircle}>
-              <Ionicons name="arrow-forward" size={18} color={colors.white} />
+          {/* CTA BUTTON - Booking Karain */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.ctaButton,
+              pressed && styles.ctaButtonPressed
+            ]}
+            onPress={() => navigation.navigate('GarmentSelect')}
+            android_ripple={{ color: 'rgba(255,255,255,0.2)', borderless: false }}
+          >
+            <Text style={styles.ctaButtonTextUrdu}>بکنگ کریں</Text>
+            <View style={styles.ctaButtonIcon}>
+              <Ionicons name="arrow-forward" size={22} color={colors.white} />
             </View>
           </Pressable>
         </View>
@@ -186,238 +228,242 @@ export default function DashboardScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFA',
   },
+
+  // ===== CLEAN MINIMAL HEADER =====
   header: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.white,
     paddingHorizontal: 24,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+    zIndex: 10,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    minHeight: 56,
   },
-  logoRow: {
-    flexShrink: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 16,
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: colors.text,
+    letterSpacing: -0.5,
   },
-  headerIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
     justifyContent: 'center',
     alignItems: 'center',
-    flexShrink: 0,
   },
-  logoTextUrdu: {
-    fontWeight: '900',
-    fontSize: 22,
-    color: colors.white,
-    marginTop: Platform.OS === 'ios' ? -4 : -6,
-    marginBottom: Platform.OS === 'android' ? -12 : 0,
+  settingsButtonPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+    transform: [{ scale: 0.95 }],
   },
-  logoTextSub: {
-    fontFamily: URDU_FONT,
-    fontSize: 10,
-    color: colors.white,
-    opacity: 0.8,
-    lineHeight: 14,
-  },
-  headerTitles: {
-    gap: 4,
-  },
-  dateText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+
+  // ===== SCROLL VIEW =====
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
     padding: 20,
+    paddingBottom: 40,
     flexGrow: 1,
   },
+
+  // ===== EMPTY STATE =====
+  emptyStateContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    marginBottom: 8,
+  },
+  emptyStateTextUrdu: {
+    fontFamily: URDU_FONT_BOLD,
+    fontSize: 18,
+    color: colors.textOpacity(0.4),
+    marginTop: 12,
+  },
+  emptyStateSubText: {
+    fontSize: 14,
+    color: colors.textOpacity(0.3),
+    marginTop: 4,
+  },
+
+  // ===== CARDS =====
   cardsContainer: {
     gap: 16,
   },
-  // In Progress Card
-  inProgressCard: {
-    backgroundColor: colors.inProgressBackground,
+  loaderContainer: {
+    height: 56,
+    justifyContent: 'center',
+  },
+
+  // ===== SHOP NAME CARD =====
+  shopNameCard: {
+    backgroundColor: colors.white,
     borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(33, 160, 80, 0.15)',
-  },
-  inProgressTopRow: {
-    marginBottom: 16,
-  },
-  inProgressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  smallIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.inProgressIconBackground,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    height: 70,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
-  inProgressTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: 0.5,
+  shopNameText: {
+    fontSize: 18,
+    color: colors.text,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    paddingVertical: 8,
   },
-  inProgressBody: {
+
+  // ===== STATS CARDS LAYOUT =====
+  statsLayoutRow: {
+    flexDirection: 'row',
+    gap: 14,
+  },
+  primaryCard: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderRadius: 20,
+    padding: 16,
+    justifyContent: 'space-between',
+    minHeight: 220,
+  },
+  primaryCardPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
+  },
+  primaryCardLabel: {
+    fontFamily: URDU_FONT_BOLD,
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: 8,
+  },
+  primaryCardBottomRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  inProgressLeft: {
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 'auto',
   },
   bigNumber: {
     fontSize: 56,
     fontWeight: '900',
-    color: colors.text,
+    color: colors.white,
     lineHeight: 64,
-    marginBottom: -4,
+    letterSpacing: -1.5,
   },
-  urduLabel: {
-    fontFamily: URDU_FONT_BOLD,
-    fontSize: 18,
-    color: colors.textOpacity(0.8),
-    includeFontPadding: false,
-    paddingVertical: 2,
+  secondaryCardsColumn: {
+    flex: 1,
+    gap: 14,
   },
-  largeIconBox: {
-    width: 64,
-    height: 64,
+  secondaryCard: {
+    flex: 1,
     borderRadius: 20,
-    backgroundColor: colors.inProgressIconBackground,
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: 16,
+    justifyContent: 'space-between',
   },
-  // Row Cards
-  rowCards: {
+  completedCard: {
+    backgroundColor: '#008A4E', // Distinctly darker green
+  },
+  deliveredCard: {
+    backgroundColor: '#004D2C', // Very dark forest green
+  },
+  secondaryCardPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
+  },
+  secondaryCardTopRow: {
     flexDirection: 'row',
-    gap: 16,
-  },
-  halfCardCompleted: {
-    flex: 1,
-    backgroundColor: colors.completedBackground,
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  halfCardToCollect: {
-    flex: 1,
-    backgroundColor: colors.warningBackground,
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 166, 27, 0.2)',
-  },
-  smallIconCircleCompleted: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.completedIconBackground,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  smallIconCircleToCollect: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.warningLight,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 8,
   },
-  bigNumberSmall: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: colors.text,
-    lineHeight: 48,
-  },
-  halfCardBottom: {
+  secondaryCardTopRowDelivered: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
-    marginTop: 4,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
-  englishLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textOpacity(0.4),
-    textTransform: 'uppercase',
-  },
-  englishLabelToCollect: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.warning,
-    textTransform: 'uppercase',
-  },
-  urduLabelRight: {
+  secondaryCardLabel: {
     fontFamily: URDU_FONT_BOLD,
-    fontSize: 16,
-    color: colors.textOpacity(0.5),
-    includeFontPadding: false,
-    paddingVertical: 2,
+    fontSize: 15,
+    color: colors.white,
+    marginTop: 'auto',
   },
-  urduLabelRightToCollect: {
-    fontFamily: URDU_FONT_BOLD,
-    fontSize: 16,
-    color: colors.warning,
-    includeFontPadding: false,
-    paddingVertical: 2,
+  bigNumberSmall: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: colors.white,
+    lineHeight: 38,
+    letterSpacing: -0.5,
   },
-  // New Booking Button
-  newBookingBtn: {
+
+  // ===== CTA BUTTON =====
+  ctaButton: {
     backgroundColor: colors.primary,
-    borderRadius: 14,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 16,
+    marginTop: 4,
     gap: 10,
     ...Platform.select({
-      ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
-      android: { elevation: 2 },
+      ios: {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 4,
+      },
     }),
   },
-  newBookingIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  ctaButtonPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
   },
-  newBookingTextEng: {
+  ctaButtonTextUrdu: {
     color: colors.white,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  newBookingTextUrdu: {
-    color: colors.white,
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: URDU_FONT_BOLD,
     includeFontPadding: false,
-    paddingVertical: 4,
+    paddingVertical: 2,
+    letterSpacing: 0.5,
+  },
+  ctaButtonIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -1,7 +1,7 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import { FlatList, Linking, Pressable, StyleSheet, Text, View, RefreshControl, TextInput, Alert, Platform, Modal, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
@@ -16,6 +16,7 @@ import { generateCustomerHtml } from '../utils/invoiceGenerator';
 import TailorNumPad from '../components/TailorNumPad';
 import BlinkingCursor from '../components/BlinkingCursor';
 import { colors } from '../theme/colors';
+import { MainTabParamList } from '../../App';
 
 
 type OrderRow = {
@@ -74,6 +75,14 @@ export default function OrdersScreen() {
   });
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'stitching' | 'ready' | 'delivered'>('all');
+
+  const route = useRoute<RouteProp<MainTabParamList, 'Orders'>>();
+
+  useEffect(() => {
+    if (route.params?.filter) {
+      setActiveFilter(route.params.filter);
+    }
+  }, [route.params?.filter]);
 
   const handleKeyPress = (key: string) => {
     if (key === '⌫') {

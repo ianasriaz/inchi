@@ -12,15 +12,17 @@
 When writing code for Inchi, you MUST adhere to these absolute rules:
 1.  **The "No Keyboard" Rule:** The core measurement screen must NEVER trigger the native iOS/Android system keyboard. Measurements are entered strictly via our custom `<TailorNumPad>` component. Native inputs are only allowed for initial customer searches or the final finance/invoice screen.
 2.  **JSONB Supabase Superpower:** Do not map specific measurements (length, chest, etc.) to SQL columns. They must always be saved as a single JSON object inside the `measurements` JSONB column in the `orders` table to allow infinite future flexibility.
-3.  **Urdu Localization:** The app uses bilingual labels (English / Urdu). E.g., `Length / لمبائی`. Always apply the `NotoNastaliqUrdu` font family to Urdu text elements.
+3.  **Smart Urdu Localization:** The app uses bilingual labels and user input. Always use the custom `<AppText>` component for any text that might contain Urdu. It automatically detects Arabic/Urdu blocks and applies the `NotoNastaliqUrdu` font with adjusted sizes, while falling back to the clean system font for English.
 4.  **The Math Rule:** Do not calculate `balance_amount` manually in the app before saving to the database. The Supabase `orders` table handles this via a Generated Column (`total_amount - advance_amount`).
 
 ## 4. UI / UX Design System
 We use a high-contrast, modern Light Theme tailored for bright shop environments.
 * **Colors:** All colors are centralized in `src/theme/colors.ts`. **DO NOT use hardcoded hex values in stylesheets.** Always import `colors` from the theme folder.
+* **Dashboard Layout:** The Dashboard uses a distinct 3-tone brand green asymmetric layout (one tall primary card on the left, two stacked secondary cards on the right).
+* **Typography:** Utilize `<AppText>` for seamless English/Urdu font switching.
 * **Backgrounds:** `colors.background` (Pure White) or `colors.surface` (light grey) for input containers.
 * **Text & Borders:** `colors.text` and `colors.border`.
-* **Primary Accents & Active States:** `colors.primary` (Mint Green).
+* **Primary Accents & Active States:** `colors.primary` (Mint Green), alongside `primaryDark` and deeper green shades for card gradients.
 * **Layout:** Use 2-column grids for measurement forms to eliminate vertical scrolling. Buttons should be large, block-style, and highly touchable.
 
 ## 5. Current App Flow (React Navigation)

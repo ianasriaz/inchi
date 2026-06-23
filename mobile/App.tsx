@@ -56,7 +56,7 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Dashboard: undefined;
-  Orders: undefined;
+  Orders: { filter?: 'all' | 'stitching' | 'ready' | 'delivered' } | undefined;
   Customers: undefined;
 };
 

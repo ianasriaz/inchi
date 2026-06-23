@@ -461,7 +461,7 @@ export default function MeasurementScreen({ route, navigation }: any) {
             activeFieldLabel={MEASUREMENTS.find(f => f.id === activeField)?.label.split(' / ')[0] || ''}
           />
         ) : !isKeyboardVisible ? (
-          <View style={styles.bottomBar}>
+          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom + 12, 24) }]}>
             <TouchableOpacity style={styles.nextButton} onPress={handleConfirm}>
               <AppText style={[styles.nextButtonText, { fontSize: 20 }]}>ٹھیک ہے</AppText>
               <Ionicons name="checkmark-done" size={24} color={colors.text} />
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
 
   notesInput: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, height: 100, fontSize: 15, color: colors.text },
 
-  bottomBar: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: Platform.OS === 'ios' ? 24 : 16, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
+  bottomBar: { paddingHorizontal: 20, paddingTop: 16, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
   nextButton: { backgroundColor: colors.primary, flexDirection: 'row', height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', gap: 8 },
   nextButtonText: { color: colors.text, fontSize: 17, fontWeight: '800' },
 });
